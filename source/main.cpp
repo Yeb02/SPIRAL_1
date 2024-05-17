@@ -36,30 +36,20 @@ int main()
 
 
 
-	int nThreads = std::thread::hardware_concurrency();
-	LOGL(nThreads << " concurrent threads are supported at hardware level.");
-	//nThreads -= 1; // if your computer lags, uncomment this.
-
-	//nThreads = 1;
-
-	LOGL("Using " << nThreads << ".\n");
-
-
-
 #ifdef LABEL_IS_DATAPOINT
-	const int nLayers = 2;
-	int sizes[nLayers] = { datapointS + labelS, 10 };
+	const int nLayers = 3;
+	int sizes[nLayers] = { datapointS + labelS, 20, 10 };
 #else
 	const int nLayers = 2;
 	int sizes[nLayers] = { datapointS, labelS };
 #endif
 	
 	
-	float Kw = .002f;
-	float stepSize = .01f;
+	float weightRegularization = .01f;
+	float gradientStepSize = .01f;
 
-
-	FCN nn(nLayers, &sizes[0], Kw, stepSize, nThreads, datapointS);
+	//const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize
+	FCN nn(nLayers, &sizes[0], datapointS, weightRegularization, gradientStepSize);
 
 
 
@@ -71,24 +61,23 @@ int main()
 #endif
 
 
-	for (int u = 0; u < 10; u++) {
-		for (int i = 0; i < 10; i++) {
-			int id = 0;
-			while (batchedLabels[id][i] != 1.0f) {
-				id++;
-			}
-			nn.learn(batchedPoints[id], batchedLabels[id], 15);
-		}
-	}
-
-	//for (int i = 0; i < 100; i++)
-	//{
-	//	nn.learn(batchedPoints[i], batchedLabels[i], 15);
+	//for (int u = 0; u < 10; u++) {
+	//	for (int i = 0; i < 10; i++) {
+	//		int id = 0;
+	//		while (batchedLabels[id][i] != 1.0f) {
+	//			id++;
+	//		}
+	//		nn.learn(batchedPoints[id], batchedLabels[id], 15);
+	//	}
 	//}
 
+	for (int i = 0; i < 100; i++)
+	{
+		nn.learn(batchedPoints[i], batchedLabels[i], 15);
+	}
 
-	//nn.stepSize = .01f;
-	int nTests = 1000;
+
+	int nTests = 200;
 	int nCorrects = 0;
 	for (int i = 0; i < nTests; i++)
 	{

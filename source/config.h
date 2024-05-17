@@ -6,7 +6,7 @@
 
 //#define DYNAMIC_PRECISIONS
 
-//#define ORDINARY_GD
+#define ORDINARY_GD
 #ifndef ORDINARY_GD
 #define NAT_GRAD_1
 #endif
