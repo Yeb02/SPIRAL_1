@@ -45,12 +45,11 @@ int main()
 #endif
 	
 	
-	float weightRegularization = .01f;
+	float weightRegularization = .001f;
 	float gradientStepSize = .01f;
 
 	//const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize
 	FCN nn(nLayers, &sizes[0], datapointS, weightRegularization, gradientStepSize);
-
 
 
 	// poor, TODO
@@ -61,27 +60,27 @@ int main()
 #endif
 
 
-	//for (int u = 0; u < 10; u++) {
-	//	for (int i = 0; i < 10; i++) {
-	//		int id = 0;
-	//		while (batchedLabels[id][i] != 1.0f) {
-	//			id++;
-	//		}
-	//		nn.learn(batchedPoints[id], batchedLabels[id], 15);
-	//	}
-	//}
-
-	for (int i = 0; i < 100; i++)
-	{
-		nn.learn(batchedPoints[i], batchedLabels[i], 15);
+	for (int u = 0; u < 1; u++) {
+		for (int i = 0; i < 10; i++) {
+			int id = 0;
+			while (batchedLabels[id][i] != 1.0f) {
+				id++;
+			}
+			nn.learn(batchedPoints[id], batchedLabels[id], 15);
+		}
 	}
 
+	//for (int i = 0; i < 100; i++)
+	//{
+	//	nn.learn(batchedPoints[i], batchedLabels[i], 15);
+	//}
 
-	int nTests = 200;
+
+	int nTests = 1000;
 	int nCorrects = 0;
 	for (int i = 0; i < nTests; i++)
 	{
-		nn.evaluate(testBatchedPoints[i], 20);
+		nn.evaluate(testBatchedPoints[i], 15);
 
 		float MSE_loss = .0f;
 		for (int j = 0; j < labelS; j++)

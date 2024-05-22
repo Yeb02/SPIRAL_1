@@ -50,6 +50,10 @@ struct FCN
 	// the sum of the importance weights over time for the activation biases
 	float** bx_importance;
 
+#ifndef ORDINARY_GD
+	float** xGrads;
+#endif
+
 	FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize);
 
 	~FCN();

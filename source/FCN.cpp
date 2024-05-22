@@ -39,7 +39,7 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 		wx_importance[i] = new float[s];
 		
 		
-		std::fill(wx_precision[i], wx_precision[i] + s, f); // TODO remove f ?
+		std::fill(wx_precision[i], wx_precision[i] + s, 1.0f); // TODO f or 1.f ?
 		std::fill(wx_importance[i], wx_importance[i] + s, 1.0f); // TODO thats the prior's strength, give it a good think
 
 #ifdef DYNAMIC_PRECISIONS
@@ -47,7 +47,7 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 #endif
 
 		for (int j = 0; j < s; j++) {
-			wx_mean[i][j] = NORMAL_01 * .3f / f; // TODO remove f ?
+			wx_mean[i][j] = NORMAL_01 * wx_precision[i][j]; 
 		}
 	}
 
@@ -83,7 +83,8 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 
 	}
 
-	setXtoMAP(false);
+	setWBtoMAP();
+	//sampleWB();
 }
 
 FCN::~FCN() {
@@ -111,10 +112,14 @@ FCN::~FCN() {
 
 
 
-#ifdef LABEL_IS_DATAPOINT
+
 void FCN::sampleX(bool supervised)
 {
+#ifdef LABEL_IS_DATAPOINT
 	for (int i = nLayers - 1; i >= 1; i--)
+#else
+	for (int i = nLayers - 1 - supervised; i >= 1; i--)
+#endif
 	{
 
 		for (int j = 0; j < sizes[i]; j++)
@@ -141,6 +146,7 @@ void FCN::sampleX(bool supervised)
 		}
 	}
 
+#ifdef LABEL_IS_DATAPOINT
 	if (!supervised) {
 		int offset_0 = sizes[0];
 		int offset_1 = sizes[1];
@@ -156,43 +162,18 @@ void FCN::sampleX(bool supervised)
 			x[0][j] = epsilon[0][j] + NORMAL_01 / tau[0][j];
 		}
 	}
-}
-#else
-void FCN::sampleX(bool supervised)
-{
-	for (int i = nLayers - 1 - supervised; i >= 1; i--)
-	{
-
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			epsilon[i][j] = bx_variates[i][j];
-		}
-		if (i < nLayers - 1) {
-
-			int id = 0;
-			for (int j = 0; j < sizes[i]; j++)
-			{
-				for (int k = 0; k < sizes[i + 1]; k++)
-				{
-					epsilon[i][j] += wx_variates[i][id] * fx[i + 1][k];
-					id++;
-				}
-			}
-		}
-
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			x[i][j] = epsilon[i][j] + NORMAL_01 / tau[i][j];
-			fx[i][j] = tanhf(x[i][j]);
-		}
-	}
-}
 #endif
+}
 
-#ifdef LABEL_IS_DATAPOINT
+
 void FCN::setXtoMAP(bool supervised)
 {
+
+#ifdef LABEL_IS_DATAPOINT
 	for (int i = nLayers - 1; i >= 1; i--)
+#else
+	for (int i = nLayers - 1 - supervised; i >= 1; i--)
+#endif
 	{
 
 
@@ -219,6 +200,7 @@ void FCN::setXtoMAP(bool supervised)
 		}
 	}
 
+#ifdef LABEL_IS_DATAPOINT
 	if (!supervised) {
 		int id = 0;
 		for (int j = datapointSize; j < sizes[0]; j++)
@@ -232,37 +214,8 @@ void FCN::setXtoMAP(bool supervised)
 			x[0][j] = epsilon[0][j];
 		}
 	}
-}
-#else
-void FCN::setXtoMAP(bool supervised)
-{
-	for (int i = nLayers - 1 - supervised; i >= 1; i--)
-	{
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			epsilon[i][j] = bx_variates[i][j];
-		}
-		if (i < nLayers - 1) {
-			int id = 0;
-			for (int j = 0; j < sizes[i]; j++)
-			{
-				for (int k = 0; k < sizes[i + 1]; k++)
-				{
-					epsilon[i][j] += wx_variates[i][id] * fx[i + 1][k];
-					id++;
-				}
-			}
-		}
-
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			x[i][j] = epsilon[i][j];
-			fx[i][j] = tanhf(x[i][j]);
-		}
-	}
-}
 #endif
-
+}
 
 void FCN::setWBtoMAP() 
 {
@@ -326,7 +279,7 @@ void FCN::computeEpsilons(int l)
 }
 
 
-#ifdef LABEL_IS_DATAPOINT
+
 void FCN::simultaneousAscentStep(bool supervised)
 {
 	for (int i = 0; i < nLayers; i++)
@@ -342,6 +295,7 @@ void FCN::simultaneousAscentStep(bool supervised)
 	{
 
 		// update xl but not f(xl), which is updated at the end of this loop's step
+#ifdef LABEL_IS_DATAPOINT
 		if (i == 0 && !supervised) 
 		{
 			for (int j = datapointSize; j < sizes[i]; j++) {
@@ -350,7 +304,9 @@ void FCN::simultaneousAscentStep(bool supervised)
 			}
 		}
 		else if (i > 0) {
-
+#else
+		if (i > 0 && i < nLayers - supervised) {
+#endif
 			for (int j = 0; j < sizes[i]; j++) {
 				float gradx = - epsilon[i][j] * tau[i][j];
 				float fprime = 1.0f - powf(fx[i][j], 2.f); // tanh prime
@@ -397,9 +353,7 @@ void FCN::simultaneousAscentStep(bool supervised)
 		}
 	}
 }
-#else
-TODO
-#endif
+
 
 
 void FCN::updateParameters() 
@@ -415,18 +369,23 @@ void FCN::updateParameters()
 			{
 				for (int k = 0; k < sizes[i + 1]; k++)
 				{
-					float ew = wx_variates[i][id] - wx_mean[i][id];
-					float importanceWeight = powf(wx_precision[i][id], -.5f) * expf(ew* ew* wx_precision[i][id]);// * sqrt(2*pi) 
+					//float ew = wx_variates[i][id] - wx_mean[i][id];
+					//float importanceWeight = powf(wx_precision[i][id], -.5f) * expf(.5f *ew* ew* wx_precision[i][id]);// * sqrt(2*pi) 
+					//
+					//float new_importance = wx_importance[i][id] + importanceWeight;
+					//float new_mu = (wx_mean[i][id] * wx_importance[i][id] + importanceWeight * wx_variates[i][id]) / new_importance;
+					//float delta_mu = new_mu - wx_mean[i][id];
+					//float newSigma2 = wx_importance[i][id] * (1.0f / (wx_precision[i][id] * new_importance) + delta_mu * delta_mu / importanceWeight);
+
+					//wx_mean[i][id] = new_mu;
+					//wx_precision[i][id] = 1.0f / newSigma2;
+					//wx_importance[i][id] = new_importance;
 					
-					float new_importance = wx_importance[i][id] + importanceWeight;
-					float new_mu = (wx_mean[i][id] * wx_importance[i][id] + importanceWeight * wx_variates[i][id]) / new_importance;
-					float delta_mu = new_mu - wx_mean[i][id];
-					float newSigma2 = wx_importance[i][id] * (1.0f / (wx_precision[i][id] * new_importance) + delta_mu * delta_mu / importanceWeight);
-
-					wx_mean[i][id] = new_mu;
-					wx_precision[i][id] = 1.0f / newSigma2;
-					wx_importance[i][id] = new_importance;
-
+					wx_mean[i][id] = wx_variates[i][id];
+					//float importanceWeight = 1.0f;
+					float importanceWeight = .5f * tau[i][j] * powf(fx[i+1][k], 2.0f);
+					wx_precision[i][id] += importanceWeight;
+					
 					id++;
 				}
 			}
@@ -435,17 +394,22 @@ void FCN::updateParameters()
 		// b[i]
 		for (int j = 0; j < sizes[i]; j++)
 		{
-			float eb = bx_variates[i][j] - bx_mean[i][j];
-			float importanceWeight = powf(bx_precision[i][j], -.5f) * expf(eb * eb * bx_precision[i][j]);// * sqrt(2*pi) 
+			//float eb = bx_variates[i][j] - bx_mean[i][j];
+			//float importanceWeight = powf(bx_precision[i][j], -.5f) * expf(.5f * eb * eb * bx_precision[i][j]);// * sqrt(2*pi) 
 
-			float new_importance = bx_importance[i][j] + importanceWeight;
-			float new_mu = (bx_mean[i][j] * bx_importance[i][j] + importanceWeight * bx_variates[i][j]) / new_importance;
-			float delta_mu = new_mu - bx_mean[i][j];
-			float newSigma2 = bx_importance[i][j] * (1.0f / (bx_precision[i][j] * new_importance) + delta_mu * delta_mu / importanceWeight);
+			//float new_importance = bx_importance[i][j] + importanceWeight;
+			//float new_mu = (bx_mean[i][j] * bx_importance[i][j] + importanceWeight * bx_variates[i][j]) / new_importance;
+			//float delta_mu = new_mu - bx_mean[i][j];
+			//float newSigma2 = bx_importance[i][j] * (1.0f / (bx_precision[i][j] * new_importance) + delta_mu * delta_mu / importanceWeight);
 
-			bx_mean[i][j] = new_mu;
-			bx_precision[i][j] = 1.0f / newSigma2;
-			bx_importance[i][j] = new_importance;
+			//bx_mean[i][j] = new_mu;
+			//bx_precision[i][j] = 1.0f / newSigma2;
+			//bx_importance[i][j] = new_importance;
+
+			bx_mean[i][j] = bx_variates[i][j];
+			//float importanceWeight = 1.0f;
+			float importanceWeight = .5f * tau[i][j];
+			bx_precision[i][j] += importanceWeight;
 		}
 	}
 }
@@ -476,15 +440,25 @@ float FCN::computePerVariateEnergy()
 
 	for (int i = 0; i < nLayers; i++)
 	{
-		n += sizes[i];
+		n += 2 * sizes[i];
 		computeEpsilons(i);
 		for (int j = 0; j < sizes[i]; j++)
 		{
-			E += .5f * epsilon[i][j] * epsilon[i][j] * tau[i][j] - logf(tau[i][j]); // + constants
+			E += .5f * epsilon[i][j] * epsilon[i][j] * tau[i][j]; // - logf(tau[i][j]); // + constants
+			float eb = bx_variates[i][j] - bx_mean[i][j];
+			E += .5f * eb * eb * bx_precision[i][j]; // - logf(bx_precision[i][j]); // + constants
+			
 		}
 
+		if (i == nLayers - 1) break;
 
-		 // TODO
+		float s = sizes[i] * sizes[i + 1];
+		n += s;
+		for (int j = 0; j < s; j++)
+		{
+			float ew = wx_variates[i][j] - wx_mean[i][j];
+			E += .5f * ew * ew * wx_precision[i][j]; // -logf(wx_precision[i][j]); // + constants
+		}
 	}
 
 	return E / (float)n;
@@ -506,10 +480,8 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 	}
 #endif
 
-	setWBtoMAP();
-	//sampleWB();
-	setXtoMAP(true);
-	//sampleX(true);
+	//setXtoMAP(true);
+	sampleX(true);
 
 	for (int i = 0; i < _nSteps; i++)
 	{
@@ -526,8 +498,7 @@ void FCN::evaluate(float* _datapoint, int _nSteps)
 {
 	std::copy(_datapoint, _datapoint + datapointSize, x[0]);
 
-	setWBtoMAP();
-	//sampleWB();
+
 	setXtoMAP(false);
 	//sampleX(false);
 
