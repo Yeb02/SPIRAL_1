@@ -48,8 +48,16 @@ struct FCN
 	float** bx_precision;
 
 
-#ifndef ORDINARY_GD
-	float** xGrads;
+#ifdef PROSPECTIVE_GRAD
+	float internalGradientStepSize;
+	int nInternalSteps;
+
+	float** deltaX;
+	
+	float** F1;
+	float** F2;
+	float** F3;
+	float** deltaMu;
 #endif
 
 	FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize);
@@ -63,9 +71,16 @@ struct FCN
 	void sampleWB(); 
 
 	void computeEpsilons(int layer);
+	void computeAllEpsilons();
 
 	void simultaneousAscentStep(bool supervised);
 
+#ifdef PROSPECTIVE_GRAD
+	void externalGradientStep(bool supervised);
+	void internalGradientStep(bool supervised);
+	void setOptimalWB();
+	void initializeDeltaX(bool supervised);
+#endif
 
 	void updateParameters();
 

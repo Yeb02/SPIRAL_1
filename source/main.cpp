@@ -38,19 +38,27 @@ int main()
 
 #ifdef LABEL_IS_DATAPOINT
 	const int nLayers = 2;
-	int sizes[nLayers] = { datapointS + labelS, 10 };
+	int sizes[nLayers+2] = { 0, datapointS + labelS, 10, 0 };
 #else
 	const int nLayers = 2;
-	int sizes[nLayers] = { datapointS, labelS };
+	int sizes[nLayers+2] = { 0, datapointS, labelS, 0 };
 #endif
-	
+
+
+
 	
 	float weightRegularization = .00f;
 	float gradientStepSize = .01f;
+	float internalGradientStepSize = gradientStepSize * .2f;
+	int nInternalSteps = 5;
 
 	//const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize
-	FCN nn(nLayers, &sizes[0], datapointS, weightRegularization, gradientStepSize);
+	FCN nn(nLayers, &sizes[1], datapointS, weightRegularization, gradientStepSize);
 
+#ifdef PROSPECTIVE_GRAD
+	nn.internalGradientStepSize = internalGradientStepSize;
+	nn.nInternalSteps = nInternalSteps;
+#endif
 
 	// poor, TODO
 #ifdef LABEL_IS_DATAPOINT
@@ -70,9 +78,9 @@ int main()
 	//	}
 	//}
 
-	for (int i = 0; i < 100; i++)
+	for (int i = 0; i < 1000; i++)
 	{
-		nn.learn(batchedPoints[i], batchedLabels[i], 15);
+		nn.learn(batchedPoints[i], batchedLabels[i], 8);
 	}
 
 	nn.gradientStepSize = .1f;
@@ -80,7 +88,7 @@ int main()
 	int nCorrects = 0;
 	for (int i = 0; i < nTests; i++)
 	{
-		nn.evaluate(testBatchedPoints[i], 3);
+		nn.evaluate(testBatchedPoints[i], 10);
 
 		float MSE_loss = .0f;
 		for (int j = 0; j < labelS; j++)

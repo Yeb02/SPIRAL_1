@@ -9,9 +9,9 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 {
 
 
-	wx_variates = new float*[nLayers-1];
-	wx_mean = new float*[nLayers-1];
-	wx_precision = new float*[nLayers-1];
+	wx_variates = new float*[nLayers];
+	wx_mean = new float*[nLayers];
+	wx_precision = new float*[nLayers];
 	
 	bx_variates = new float*[nLayers];
 	bx_mean = new float*[nLayers];
@@ -22,11 +22,25 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 	epsilon = new float* [nLayers];
 	tau = new float* [nLayers];
 
+
+#ifdef PROSPECTIVE_GRAD
+	internalGradientStepSize = .0f;
+	nInternalSteps = 0;
+
+
+	deltaX = new float* [nLayers];
+	F1 = new float* [nLayers];
+	F2 = new float* [nLayers];
+	F3 = new float* [nLayers];
+	deltaMu = new float* [nLayers];
+#endif
+
+
 #ifdef DYNAMIC_PRECISIONS
 	
 #endif
 
-	for (int i = 0; i < nLayers-1; i++)
+	for (int i = 0; i < nLayers; i++)
 	{
 		int s = sizes[i] * sizes[i + 1];
 		float He = powf((float)s, .5f);
@@ -36,22 +50,18 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 		wx_precision[i] = new float[s];
 		
 		
-		std::fill(wx_precision[i], wx_precision[i] + s, He); // TODO He or 1.0f ? Thats the prior's strength, give it a good think
+		//std::fill(wx_precision[i], wx_precision[i] + s, He); // TODO He or 1.0f ? Thats the prior's strength, give it a good think
+		std::fill(wx_precision[i], wx_precision[i] + s, .2f); // TODO He or 1.0f ? Thats the prior's strength, give it a good think
 
 #ifdef DYNAMIC_PRECISIONS
 
 #endif
 
 		for (int j = 0; j < s; j++) {
-			wx_mean[i][j] = NORMAL_01 / wx_precision[i][j]; 
+			//wx_mean[i][j] = NORMAL_01 / wx_precision[i][j]; 
+			wx_mean[i][j] = NORMAL_01 / He; 
 		}
-	}
-
-
-
-
-	for (int i = 0; i < nLayers; i++)
-	{
+	
 
 		bx_variates[i] = new float[sizes[i]];
 		bx_mean[i] = new float[sizes[i]];
@@ -75,6 +85,14 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 			bx_mean[i][j] = NORMAL_01 * .3f;
 		}
 
+#ifdef PROSPECTIVE_GRAD
+		deltaX[i] = new float [sizes[i]];
+		F1[i] = new float [sizes[i]];
+		F2[i] = new float [sizes[i]];
+		F3[i] = new float [sizes[i]];
+		deltaMu[i] = new float [sizes[i]];
+#endif
+
 	}
 
 	setWBtoMAP();
@@ -94,15 +112,19 @@ FCN::~FCN() {
 		delete[] bx_mean[i];
 		delete[] bx_precision[i];
 
-		if (i == nLayers - 1) break;
-
 		delete[] wx_variates[i];
 		delete[] wx_mean[i];
 		delete[] wx_precision[i];
+
+#ifdef PROSPECTIVE_GRAD
+		delete[] deltaX[i];
+		delete[] F1[i];
+		delete[] F2[i];
+		delete[] F3[i];
+		delete[] deltaMu[i];
+#endif
 	}
 }
-
-
 
 
 void FCN::sampleX(bool supervised)
@@ -140,8 +162,6 @@ void FCN::sampleX(bool supervised)
 
 #ifdef LABEL_IS_DATAPOINT
 	if (!supervised) {
-		int offset_0 = sizes[0];
-		int offset_1 = sizes[1];
 		int id = 0;
 		for (int j = datapointSize; j < sizes[0]; j++)
 		{
@@ -156,7 +176,6 @@ void FCN::sampleX(bool supervised)
 	}
 #endif
 }
-
 
 void FCN::setXtoMAP(bool supervised)
 {
@@ -209,18 +228,16 @@ void FCN::setXtoMAP(bool supervised)
 #endif
 }
 
+
 void FCN::setWBtoMAP() 
 {
-	for (int i = 0; i < nLayers - 1; i++)
+	for (int i = 0; i < nLayers; i++)
 	{
 		int s = sizes[i] * sizes[i + 1];
 		for (int j = 0; j < s; j++) {
 			wx_variates[i][j] = wx_mean[i][j];
 		}
-	}
 
-	for (int i = 0; i < nLayers; i++)
-	{
 		for (int j = 0; j < sizes[i]; j++) {
 			bx_variates[i][j] = bx_mean[i][j];
 		}
@@ -229,16 +246,13 @@ void FCN::setWBtoMAP()
 
 void FCN::sampleWB() 
 {
-	for (int i = 0; i < nLayers - 1; i++)
+	for (int i = 0; i < nLayers; i++)
 	{
 		int s = sizes[i] * sizes[i + 1];
 		for (int j = 0; j < s; j++) {
 			wx_variates[i][j] = wx_mean[i][j] + NORMAL_01 / wx_precision[i][j];
 		}
-	}
 
-	for (int i = 0; i < nLayers; i++)
-	{
 		for (int j = 0; j < sizes[i]; j++) {
 			bx_variates[i][j] = bx_mean[i][j] + NORMAL_01 / bx_precision[i][j];
 		}
@@ -249,35 +263,31 @@ void FCN::sampleWB()
 void FCN::computeEpsilons(int l)
 {
 
+	int id = 0;
 	for (int j = 0; j < sizes[l]; j++)
 	{
 		epsilon[l][j] = bx_variates[l][j];
-	}
-	if (l < nLayers - 1) {
-		int id = 0;
-		for (int j = 0; j < sizes[l]; j++)
+		for (int k = 0; k < sizes[l + 1]; k++)
 		{
-			for (int k = 0; k < sizes[l + 1]; k++)
-			{
-				epsilon[l][j] += wx_variates[l][id] * fx[l + 1][k];
-				id++;
-			}
+			epsilon[l][j] += wx_variates[l][id] * fx[l + 1][k];
+			id++;
 		}
-	}
-	for (int j = 0; j < sizes[l]; j++)
-	{
 		epsilon[l][j] = x[l][j] - epsilon[l][j];
 	}
 }
 
+void FCN::computeAllEpsilons() 
+{
+	for (int l = 0; l < nLayers; l++)
+	{
+		computeEpsilons(l);
+	}
+}
 
 
 void FCN::simultaneousAscentStep(bool supervised)
 {
-	for (int i = 0; i < nLayers; i++)
-	{
-		computeEpsilons(i);
-	}
+	computeAllEpsilons();
 
 	
 	// update variates. For simultaneity, if we want to avoid temporary variables, xl must be updated
@@ -314,8 +324,8 @@ void FCN::simultaneousAscentStep(bool supervised)
 		
 
 
-		// wl-1 then f(xl)
-		if (i > 0 && supervised)
+		// wl-1, bl then f(xl)
+		if (supervised)
 		{
 			int id = 0;
 			for (int j = 0; j < sizes[i-1]; j++)
@@ -330,16 +340,7 @@ void FCN::simultaneousAscentStep(bool supervised)
 
 				}
 			}
-		}
-		if (i > 0) {
 
-			for (int j = 0; j < sizes[i]; j++) {
-				fx[i][j] = tanhf(x[i][j]);
-			}
-		}
-
-		// bl
-		if (supervised) {
 			for (int j = 0; j < sizes[i]; j++)
 			{
 				float gradb = -(bx_variates[i][j] - bx_mean[i][j]) * bx_precision[i][j];
@@ -347,6 +348,13 @@ void FCN::simultaneousAscentStep(bool supervised)
 				bx_variates[i][j] += gradb * gradientStepSize;
 			}
 		}
+		if (i > 0) 
+		{
+			for (int j = 0; j < sizes[i]; j++) {
+				fx[i][j] = tanhf(x[i][j]);
+			}
+		}
+
 	}
 }
 
@@ -357,30 +365,27 @@ void FCN::updateParameters()
 	
 	for (int i = 0; i < nLayers; i++)
 	{
-		// w[i]
-		if (i < nLayers - 1)
+		
+		int id = 0;
+		for (int j = 0; j < sizes[i]; j++)
 		{
-			int id = 0;
-			for (int j = 0; j < sizes[i]; j++)
+			for (int k = 0; k < sizes[i + 1]; k++)
 			{
-				for (int k = 0; k < sizes[i + 1]; k++)
-				{
-					wx_mean[i][id] = wx_variates[i][id];
-					float importanceWeight = 1.0f;
-					//float importanceWeight = .5f * tau[i][j] * powf(fx[i+1][k], 2.0f);
-					wx_precision[i][id] += importanceWeight;
+				wx_mean[i][id] = wx_variates[i][id];
+				//float importanceWeight = .1f;
+				float importanceWeight = .5f * tau[i][j] * powf(fx[i+1][k], 2.0f) * .2f;
+				wx_precision[i][id] += importanceWeight;
 					
-					id++;
-				}
+				id++;
 			}
 		}
-
+		
 		// b[i]
 		for (int j = 0; j < sizes[i]; j++)
 		{
 			bx_mean[i][j] = bx_variates[i][j];
-			float importanceWeight = 1.0f;
-			//float importanceWeight = .5f * tau[i][j];
+			//float importanceWeight = .1f;
+			float importanceWeight = .5f * tau[i][j] * .2f;
 			bx_precision[i][j] += importanceWeight;
 		}
 	}
@@ -422,8 +427,6 @@ float FCN::computePerVariateEnergy()
 			
 		}
 
-		if (i == nLayers - 1) break;
-
 		float s = sizes[i] * sizes[i + 1];
 		n += s;
 		for (int j = 0; j < s; j++)
@@ -457,7 +460,18 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 
 	for (int i = 0; i < _nSteps; i++)
 	{
+#ifdef PROSPECTIVE_GRAD
+		initializeDeltaX(true);
+		computeAllEpsilons();
+		for (int i = 0; i < nInternalSteps; i++)
+		{
+			internalGradientStep(true);
+		}
+		externalGradientStep(true);
+		setOptimalWB();
+#else 
 		simultaneousAscentStep(true);
+#endif
 		LOG(computePerVariateEnergy() * 100.f << std::setprecision(3));
 	}
 	LOGL("\n"); 
@@ -476,9 +490,176 @@ void FCN::evaluate(float* _datapoint, int _nSteps)
 
 	for (int i = 0; i < _nSteps; i++)
 	{
+#ifdef PROSPECTIVE_GRAD
+		initializeDeltaX(false);
+		computeAllEpsilons();
+		for (int i = 0; i < nInternalSteps; i++)
+		{
+			internalGradientStep(false);
+		}
+		externalGradientStep(false);
+#else 
 		simultaneousAscentStep(false);
+#endif
 		LOG(computePerActivationEnergy() * 100.f << std::setprecision(3));
 	}
 	LOGL("\n");
 }
+
+
+#ifdef PROSPECTIVE_GRAD
+void FCN::externalGradientStep(bool supervised)
+{
+#ifdef LABEL_IS_DATAPOINT
+	for (int i = nLayers - 1; i >= 1; i--)
+#else
+	for (int i = nLayers - 1 - supervised; i >= 1; i--)
+#endif
+	{
+		for (int j = 0; j < sizes[i]; j++)
+		{
+			x[i][j] += deltaX[i][j];
+			fx[i][j] = tanhf(x[i][j]);
+		}
+	}
+
+#ifdef LABEL_IS_DATAPOINT
+	if (!supervised) {
+		int id = 0;
+		for (int j = datapointSize; j < sizes[0]; j++)
+		{
+			x[0][j] += deltaX[0][j];
+			fx[0][j] = tanhf(x[0][j]);
+		}
+	}
+#endif
+}
+
+void FCN::internalGradientStep(bool supervised)
+{
+	// F1, F2
+	for (int i = 1; i < nLayers; i++) 
+	{
+		for (int j = 0; j < sizes[i]; j++)
+		{
+			float fp = 1.0f - fx[i][j] * fx[i][j];
+			F1[i][j] = fp * deltaX[i][j] * (1.0f - deltaX[i][j] * fx[i][j]);
+			F2[i][j] = fp * (1.0f - 2.0f * deltaX[i][j] * fx[i][j]);
+		}
+	}
+
+	// delta_mu, F3
+	for (int i = 0; i < nLayers; i++)
+	{
+		for (int j = 0; j < sizes[i]; j++)
+		{
+			deltaMu[i][j] = .0f;
+			for (int k = 0; k < sizes[i-1]; k++)
+			{
+				deltaMu[i][j] += F1[i][k] * wx_variates[i][k * sizes[i] + j];
+			}
+			F3[i][j] = tau[i][j] * (deltaMu[i][j] - epsilon[i][j] - deltaX[i][j]);
+		}
+	}
+
+
+	// gradient, update deltaX
+	for (int i = 0; i < nLayers; i++)
+	{
+		float lambda_xl = sqrtf((float)sizes[i-1] + 1.0f) / gradientStepSize;
+		float lambda_mulm1 = sqrtf((float)sizes[i]) / gradientStepSize; // more generally, should be sqrt(nParents) and therefore be a per node factor.
+
+		for (int j = 0; j < sizes[i]; j++)
+		{
+			float a1 = .0f, a2 = .0f;
+			for (int k = 0; k < sizes[i - 1]; k++)
+			{
+				a1 += F3[i][k] * wx_variates[i][k * sizes[i] + j];
+				a2 += tau[i][k] * deltaMu[i][k] * wx_variates[i][k * sizes[i] + j];
+			}
+
+			float grad = -F3[i][j] + F2[i][j] * (a1 + a2 * lambda_mulm1) + tau[i][j] * deltaX[i][j] * lambda_xl;
+			deltaX[i][j] += -internalGradientStepSize * grad;
+		}
+	}
+
+
+	// Yeah, laziest implementation ever
+	if (supervised) 
+	{
+		
+		std::fill(deltaX[0], deltaX[0] + datapointSize, .0f);
+#ifdef LABEL_IS_DATAPOINT
+		std::fill(deltaX[0] + datapointSize, deltaX[0] + sizes[0], .0f);
+#else
+		int i = nLayers - 1;
+		std::fill(deltaX[i], deltaX[i] + sizes[i], .0f);
+#endif
+	}
+
+}
+
+void FCN::setOptimalWB() 
+{
+	for (int i = 0; i < nLayers; i++)
+	{
+		int id = 0;
+		for (int j = 0; j < sizes[i]; j++)
+		{
+			float a1 = bx_mean[i][j];
+			float a2 = 1.0f / bx_precision[i][j];
+
+			for (int k = 0; k < sizes[i+1]; k++)
+			{
+				a1 += fx[i + 1][k] * wx_mean[i][id];
+				a2 += fx[i + 1][k] * fx[i + 1][k] / wx_precision[i][id];
+				id++;
+			}
+			a2 *= tau[i][j];
+			float fcom = tau[i][j] * (x[i][j] - a1) / (1.0f + a2);
+			id -= sizes[i + 1];
+			for (int k = 0; k < sizes[i + 1]; k++)
+			{
+				wx_variates[i][id] = wx_mean[i][id] + fcom * fx[i + 1][k] / wx_precision[i][id];
+				id++;
+			}
+			bx_variates[i][j] = bx_mean[i][j] + fcom / bx_precision[i][j];
+		}
+	}
+}
+
+void FCN::initializeDeltaX(bool supervised) 
+{
+//#ifdef LABEL_IS_DATAPOINT
+//	for (int i = nLayers - 1; i >= 1; i--)
+//#else
+//	for (int i = nLayers - 1 - supervised; i >= 1; i--)
+//#endif
+//	{
+//		for (int j = 0; j < sizes[i]; j++)
+//		{
+//			deltaX[i][j] = .0f;
+//		}
+//	}
+//
+//#ifdef LABEL_IS_DATAPOINT
+//	if (!supervised) {
+//		int id = 0;
+//		for (int j = datapointSize; j < sizes[0]; j++)
+//		{
+//			deltaX[0][j] = .0f;
+//		}
+//	}
+//#endif
+
+	for (int i = 0; i < nLayers; i++)
+	{
+		for (int j = 0; j < sizes[i]; j++)
+		{
+			deltaX[i][j] = .0f;
+		}
+	}
+}
+
+#endif
 
