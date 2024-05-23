@@ -38,8 +38,7 @@ struct FCN
 	float** wx_mean;
 	// the MAP precision of the gaussian distribution on independent activation weights
 	float** wx_precision;
-	// the sum of the importance weights over time for the activation weights
-	float** wx_importance;
+
 
 	// the activation biases of the most likely model right now. 
 	float** bx_variates;
@@ -47,8 +46,7 @@ struct FCN
 	float** bx_mean;
 	// the MAP precision of the gaussian distribution on independent activation biases
 	float** bx_precision;
-	// the sum of the importance weights over time for the activation biases
-	float** bx_importance;
+
 
 #ifndef ORDINARY_GD
 	float** xGrads;
