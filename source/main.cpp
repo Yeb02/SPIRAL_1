@@ -40,17 +40,17 @@ int main()
 	const int nLayers = 2;
 	int sizes[nLayers+2] = { 0, datapointS + labelS, 10, 0 };
 #else
-	const int nLayers = 2;
-	int sizes[nLayers+2] = { 0, datapointS, labelS, 0 };
+	const int nLayers = 3;
+	int sizes[nLayers+2] = { 0, datapointS, 20, labelS, 0 };
 #endif
 
 
 
 	
 	float weightRegularization = .00f;
-	float gradientStepSize = .01f;
-	float internalGradientStepSize = gradientStepSize * .2f;
-	int nInternalSteps = 5;
+	float gradientStepSize = 3.f; // 0.1 for ordinary GD
+	float internalGradientStepSize = .003f;
+	int nInternalSteps = 25;
 
 	//const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize
 	FCN nn(nLayers, &sizes[1], datapointS, weightRegularization, gradientStepSize);
@@ -68,27 +68,28 @@ int main()
 #endif
 
 
-	//for (int u = 0; u < 1; u++) {
-	//	for (int i = 0; i < 10; i++) {
-	//		int id = 0;
-	//		while (batchedLabels[id][i] != 1.0f) {
-	//			id++;
-	//		}
-	//		nn.learn(batchedPoints[id], batchedLabels[id], 20);
-	//	}
-	//}
-
-	for (int i = 0; i < 1000; i++)
-	{
-		nn.learn(batchedPoints[i], batchedLabels[i], 8);
+	for (int u = 0; u < 1; u++) {
+		for (int i = 0; i < 10; i++) {
+			int id = 0;
+			while (batchedLabels[id][i] != 1.0f) {
+				id++;
+			}
+			nn.learn(batchedPoints[id], batchedLabels[id], 15);
+		}
 	}
 
-	nn.gradientStepSize = .1f;
-	int nTests = 1000;
+	/*for (int i = 0; i < 10; i++)
+	{
+		nn.learn(batchedPoints[i], batchedLabels[i], 8);
+	}*/
+
+	// nn.gradientStepSize = .1f; // for ordinary GD
+	int nTests = 100;
 	int nCorrects = 0;
 	for (int i = 0; i < nTests; i++)
 	{
-		nn.evaluate(testBatchedPoints[i], 10);
+		nn.evaluate(testBatchedPoints[i], 8);
+		LOG("\n");
 
 		float MSE_loss = .0f;
 		for (int j = 0; j < labelS; j++)
@@ -96,7 +97,7 @@ int main()
 			MSE_loss += powf(output[j] - testBatchedLabels[i][j], 2.0f);
 		}
 		int isCorrect = isCorrectAnswer(output, testBatchedLabels[i]);
-		LOGL(isCorrect << " " << MSE_loss);
+		LOGL(isCorrect << " " << MSE_loss << "\n");
 		nCorrects += isCorrect;
 	}
 	LOGL("\n" << (float) nCorrects / (float) nTests);

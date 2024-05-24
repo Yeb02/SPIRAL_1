@@ -60,6 +60,10 @@ struct FCN
 	float** deltaMu;
 #endif
 
+#ifdef BARYGRAD
+	float** deltaX;
+#endif
+
 	FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize);
 
 	~FCN();
@@ -74,13 +78,15 @@ struct FCN
 	void computeAllEpsilons();
 
 	void simultaneousAscentStep(bool supervised);
+	void normalizedAscentStep(bool supervised);
 
 #ifdef PROSPECTIVE_GRAD
 	void externalGradientStep(bool supervised);
 	void internalGradientStep(bool supervised);
-	void setOptimalWB();
 	void initializeDeltaX(bool supervised);
 #endif
+	void setOptimalWB();
+
 
 	void updateParameters();
 
