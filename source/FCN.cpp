@@ -3,9 +3,9 @@
 #include <iomanip> // std::setprecision
 
 
-FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize) :
+FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize, float _certaintyDecay) :
 	nLayers(_nLayers), sizes(_sizes), gradientStepSize(_gradientStepSize), datapointSize(_datapointSize),
-	weightRegularization(_weightRegularization)
+	weightRegularization(_weightRegularization), certaintyDecay(_certaintyDecay)
 {
 
 
@@ -377,7 +377,21 @@ void FCN::normalizedAscentStep(bool supervised)
 		}
 	}
 
-	for (int i = 1; i < nLayers-supervised; i++) {
+#ifdef LABEL_IS_DATAPOINT
+	if (!supervised) {
+		int i = 0;
+		for (int j = 0; j < sizes[i]; j++) {
+			x[i][j] += gradientStepSize * deltaX[i][j] / tau[i][j];
+			fx[i][j] = tanhf(x[i][j]);
+		}
+	}
+#endif
+
+#ifdef LABEL_IS_DATAPOINT
+	for (int i = 1; i < nLayers; i++) {
+#else
+	for (int i = 1; i < nLayers - supervised; i++) {
+#endif
 		for (int j = 0; j < sizes[i]; j++) {
 			float num = .0f;
 			float den = .0f;
@@ -400,7 +414,8 @@ void FCN::normalizedAscentStep(bool supervised)
 
 void FCN::updateParameters() 
 {
-	
+	computeAllEpsilons();
+
 	for (int i = 0; i < nLayers; i++)
 	{
 		
@@ -411,9 +426,9 @@ void FCN::updateParameters()
 			{
 				wx_mean[i][id] = wx_variates[i][id];
 				float importanceWeight = 1.f;
-				//float importanceWeight = .5f * tau[i][j] * powf(fx[i+1][k], 2.0f) * .2f;
+				//float importanceWeight = .5f * tau[i][j] * powf(fx[i+1][k], 2.0f); // TODO rethink ?
 				wx_precision[i][id] += importanceWeight;
-					
+				wx_precision[i][id] *= 1.0f - certaintyDecay; // *(1.0f - expf(-.5f * tau[i][j] * powf(epsilon[i][j], 2.0f))); ?
 				id++;
 			}
 		}
@@ -423,8 +438,9 @@ void FCN::updateParameters()
 		{
 			bx_mean[i][j] = bx_variates[i][j];
 			float importanceWeight = 1.f;
-			//float importanceWeight = .5f * tau[i][j] * .2f;
+			//float importanceWeight = .5f * tau[i][j];
 			bx_precision[i][j] += importanceWeight;
+			bx_precision[i][j] *= 1.0f - certaintyDecay; // *(1.0f - expf(-.5f * tau[i][j] * powf(epsilon[i][j], 2.0f))); ?
 		}
 	}
 }
@@ -519,14 +535,14 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 
 #ifdef BARYGRAD
 		normalizedAscentStep(true);
-		
+		setOptimalWB();
 #endif
 
 		LOG(computePerActivationEnergy() * 100.f << std::setprecision(3));
 	}
 	LOGL("\n"); 
 
-	setOptimalWB();
+
 	updateParameters();
 }
 
@@ -535,8 +551,8 @@ void FCN::evaluate(float* _datapoint, int _nSteps)
 	std::copy(_datapoint, _datapoint + datapointSize, x[0]);
 
 
-	setXtoMAP(false);
-	//sampleX(false);
+	//setXtoMAP(false);
+	sampleX(false);
 
 #ifdef PROSPECTIVE_GRAD
 	initializeDeltaX(false);
@@ -629,8 +645,8 @@ void FCN::internalGradientStep(bool supervised)
 	// gradient, update deltaX
 	for (int i = 0; i < nLayers; i++)
 	{
-		float lambda_xl = 1.0f / ((float)sizes[i-1] + 1.0f); // more generally, should be nChildren + 1 
-		float lambda_mulm1 = 1.0f / (float)sizes[i]; // more generally, should be nParents and therefore a per node factor.
+		float lambda_xl = 1.0f; //      / ((float)sizes[i - 1] + 1.0f); // more generally, should be nChildren + 1 
+		float lambda_mulm1 = 1.0f; //   / (float)sizes[i]; // more generally, should be nParents and therefore a per node factor.
 
 
 		for (int j = 0; j < sizes[i]; j++)

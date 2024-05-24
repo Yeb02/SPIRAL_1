@@ -40,20 +40,21 @@ int main()
 	const int nLayers = 2;
 	int sizes[nLayers+2] = { 0, datapointS + labelS, 10, 0 };
 #else
-	const int nLayers = 3;
-	int sizes[nLayers+2] = { 0, datapointS, 20, labelS, 0 };
+	const int nLayers = 2;
+	int sizes[nLayers+2] = { 0, datapointS, labelS, 0 };
 #endif
 
 
 
 	
 	float weightRegularization = .00f;
-	float gradientStepSize = 3.f; // 0.1 for ordinary GD
+	float certaintyDecay = .05f;
+	float gradientStepSize = .1f; // 0.1 for ordinary GD
 	float internalGradientStepSize = .003f;
 	int nInternalSteps = 25;
 
-	//const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize
-	FCN nn(nLayers, &sizes[1], datapointS, weightRegularization, gradientStepSize);
+	//const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize, float _certaintyDecay
+	FCN nn(nLayers, &sizes[1], datapointS, weightRegularization, gradientStepSize, certaintyDecay);
 
 #ifdef PROSPECTIVE_GRAD
 	nn.internalGradientStepSize = internalGradientStepSize;

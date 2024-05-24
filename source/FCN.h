@@ -12,7 +12,7 @@ struct FCN
 
 	float weightRegularization; 
 	float gradientStepSize; 
-
+	float certaintyDecay;
 	
 	// pre synaptic activations
 	float** x;
@@ -64,7 +64,7 @@ struct FCN
 	float** deltaX;
 #endif
 
-	FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize);
+	FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize, float _certaintyDecay);
 
 	~FCN();
 
