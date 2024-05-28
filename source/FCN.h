@@ -60,9 +60,6 @@ struct FCN
 	float** deltaMu;
 #endif
 
-#ifdef BARYGRAD
-	float** deltaX;
-#endif
 
 	FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize, float _certaintyDecay);
 

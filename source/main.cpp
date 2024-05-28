@@ -40,16 +40,16 @@ int main()
 	const int nLayers = 2;
 	int sizes[nLayers+2] = { 0, datapointS + labelS, 10, 0 };
 #else
-	const int nLayers = 2;
-	int sizes[nLayers+2] = { 0, datapointS, labelS, 0 };
+	const int nLayers = 3;
+	int sizes[nLayers + 2] = { 0, datapointS, 10, labelS, 0 };
 #endif
 
 
 
 	
-	float weightRegularization = .00f;
+	float weightRegularization = .0f;
 	float certaintyDecay = .05f;
-	float gradientStepSize = .1f; // 0.1 for ordinary GD
+	float gradientStepSize = .2f; // 0.1 for ordinary GD
 	float internalGradientStepSize = .003f;
 	int nInternalSteps = 25;
 
@@ -68,28 +68,32 @@ int main()
 	float* output = nn.x[nLayers - 1];
 #endif
 
-
-	for (int u = 0; u < 1; u++) {
-		for (int i = 0; i < 10; i++) {
-			int id = 0;
-			while (batchedLabels[id][i] != 1.0f) {
-				id++;
+	bool onePerClass = true;
+	onePerClass = false;
+	if (onePerClass) {
+		for (int u = 0; u < 1; u++) {
+			for (int i = 0; i < 10; i++) {
+				int id = 0;
+				while (batchedLabels[id][i] != 1.0f) {
+					id++;
+				}
+				nn.learn(batchedPoints[id], batchedLabels[id], 10);
 			}
-			nn.learn(batchedPoints[id], batchedLabels[id], 15);
+		}
+	}
+	else {
+		for (int i = 0; i < 100; i++)
+		{
+			nn.learn(batchedPoints[i], batchedLabels[i], 10);
 		}
 	}
 
-	/*for (int i = 0; i < 10; i++)
-	{
-		nn.learn(batchedPoints[i], batchedLabels[i], 8);
-	}*/
 
-	// nn.gradientStepSize = .1f; // for ordinary GD
-	int nTests = 100;
+	int nTests = 1000;
 	int nCorrects = 0;
 	for (int i = 0; i < nTests; i++)
 	{
-		nn.evaluate(testBatchedPoints[i], 8);
+		nn.evaluate(testBatchedPoints[i], 10);
 		LOG("\n");
 
 		float MSE_loss = .0f;
