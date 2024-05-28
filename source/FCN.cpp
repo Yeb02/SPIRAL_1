@@ -56,16 +56,15 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 		
 		
 		 // TODO He or 1.0f ? Thats the prior's strength, give it a good think
-		float f = powf((float)(sizes[i]), .5f);
-		std::fill(wx_precision[i], wx_precision[i] + s, priorImportance * f);
+		float fw = powf((float)(sizes[i]), .5f);
+		std::fill(wx_precision[i], wx_precision[i] + s, priorImportance * fw);
 
 #ifdef DYNAMIC_PRECISIONS
 
 #endif
 
 		for (int j = 0; j < s; j++) {
-			//wx_mean[i][j] = NORMAL_01 / wx_precision[i][j]; 
-			wx_mean[i][j] = NORMAL_01 * .01f; 
+			wx_mean[i][j] = NORMAL_01 * .01f; // just for differentiation, to break the symmetry. Would be zero otherwise
 		}
 	
 
@@ -80,7 +79,20 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 		tau[i] = new float[sizes[i]];
 
 
-		std::fill(bx_precision[i], bx_precision[i] + sizes[i], priorImportance); // TODO thats the prior's strength, give it a good think
+#ifdef LABEL_IS_DATAPOINT
+		if (i == 0) {
+#else
+		if ((i == 0) || (i == nLayers - 1) ) {
+#endif
+			// negligible strength because our priore is meaningless compared to the true observed data. 
+			// Unless very small, extremely noisy sample...
+			std::fill(bx_precision[i], bx_precision[i] + sizes[i], .001f); 
+		}
+		else {
+			float fb = powf((float)(sizes[i]), .5f);
+			std::fill(bx_precision[i], bx_precision[i] + sizes[i], priorImportance * fb); // TODO thats the prior's strength, give it a good think
+		}
+
 
 #ifdef DYNAMIC_PRECISIONS
 
@@ -89,7 +101,7 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 #endif
 
 		for (int j = 0; j < sizes[i]; j++) {
-			bx_mean[i][j] = NORMAL_01 * .01f;
+			bx_mean[i][j] = NORMAL_01 * .01f; // just for differentiation, to break the symmetry. Would be zero otherwise
 		}
 
 #ifdef PROSPECTIVE_GRAD
@@ -100,14 +112,11 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 		deltaMu[i] = new float [sizes[i]];
 #endif
 
-#ifdef BARYGRAD
-		deltaX[i] = new float[sizes[i]];
-#endif
 
 	}
 
 	setWBtoMAP();
-	//sampleWB();
+	setXtoMAP(false);
 }
 
 FCN::~FCN() {
@@ -463,7 +472,7 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 	}
 #endif
 
-	setXtoMAP(true);
+	setXtoMAP(true); // after quick and noisy tests, seems a bit more efficient. Can also use neither.
 	//sampleX(true);
 
 #ifdef PROSPECTIVE_GRAD
@@ -487,7 +496,9 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 		LOG(previousEnergy * 100.f << std::setprecision(3));
 		simultaneousAscentStep(true);
 		float currentEnergy = computePerActivationEnergy();
-		/*if (currentEnergy / previousEnergy > .975f) {
+
+		// Makes learning very unstable. Sometimes somewhat better results ! TODO theoretical study.
+		/*if (currentEnergy / previousEnergy > .99f) {
 			setOptimalWB();
 			LOG("WBU");
 			currentEnergy = computePerActivationEnergy();
@@ -503,9 +514,9 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 #endif
 
 	}
-	LOG(computePerActivationEnergy() * 100.f << std::setprecision(3));
+	LOG(previousEnergy * 100.f << std::setprecision(3));
 	setOptimalWB();
-	//LOG(computePerActivationEnergy() * 100.f << std::setprecision(3));
+	LOG(computePerActivationEnergy() * 100.f << std::setprecision(3));
 
 
 	LOGL("\n"); 

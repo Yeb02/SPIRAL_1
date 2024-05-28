@@ -37,8 +37,8 @@ int main()
 
 
 #ifdef LABEL_IS_DATAPOINT
-	const int nLayers = 2;
-	int sizes[nLayers+2] = { 0, datapointS + labelS, 10, 0 };
+	const int nLayers = 3;
+	int sizes[nLayers + 2] = { 0, datapointS + labelS, 10, 5, 0 };
 #else
 	const int nLayers = 3;
 	int sizes[nLayers + 2] = { 0, datapointS, 10, labelS, 0 };
