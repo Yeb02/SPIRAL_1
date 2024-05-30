@@ -23,22 +23,6 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 	tau = new float* [nLayers];
 
 
-#ifdef PROSPECTIVE_GRAD
-	internalGradientStepSize = .0f;
-	nInternalSteps = 0;
-
-
-	deltaX = new float* [nLayers];
-	F1 = new float* [nLayers];
-	F2 = new float* [nLayers];
-	F3 = new float* [nLayers];
-	deltaMu = new float* [nLayers];
-#endif
-
-#ifdef BARYGRAD
-	deltaX = new float* [nLayers];
-#endif
-
 
 #ifdef DYNAMIC_PRECISIONS
 	
@@ -103,14 +87,6 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 		for (int j = 0; j < sizes[i]; j++) {
 			bx_mean[i][j] = NORMAL_01 * .01f; // just for differentiation, to break the symmetry. Would be zero otherwise
 		}
-
-#ifdef PROSPECTIVE_GRAD
-		deltaX[i] = new float [sizes[i]];
-		F1[i] = new float [sizes[i]];
-		F2[i] = new float [sizes[i]];
-		F3[i] = new float [sizes[i]];
-		deltaMu[i] = new float [sizes[i]];
-#endif
 
 
 	}
@@ -333,8 +309,9 @@ void FCN::simultaneousAscentStep(bool supervised)
 				}
 				gradx += fprime * grad_acc; // / sqrtf((float)sizes[i - 1]); // TODO 
 				// TODO . Est ce grave ? Je dirai que non comme il n'y a pas de second ordre donc d'interactions, et que les valeurs relatives du gradient
-				// d'un x à l'autre n'importent donc pas.
-				x[i][j] += std::clamp(gradientStepSize * gradx / tau[i][j], -.2f, .2f); // remove /tau[i][j]; if no nat grads 
+				// d'un x à l'autre n'importent donc pas. Meilleures perfs avec clamp, mais convergence plus rapide sans clamp.
+				x[i][j] += std::clamp(gradientStepSize * gradx / tau[i][j], -.3f, .3f); // remove /tau[i][j]; if no nat grads 
+				
 				// fx updated further down
 			}
 		}
@@ -384,23 +361,24 @@ void FCN::updateParameters()
 	{
 		
 		int id = 0;
+		
+
 		for (int j = 0; j < sizes[i]; j++)
 		{
 			for (int k = 0; k < sizes[i + 1]; k++)
 			{
-				wx_mean[i][id] = wx_variates[i][id];
+				
 				//  * tau[i][j] * powf(fx[i + 1][k], 2.0f); does not work. TODO * tau[i][j] only ? When dynamic taus.
 				wx_precision[i][id] += importanceLearningRate;
 				wx_precision[i][id] *= 1.0f - certaintyDecay; // TODO heuristics here too ?
+				
+				wx_mean[i][id] = wx_variates[i][id] * weightRegularization;
+				
 				id++;
 			}
-		}
-		
-		// b[i]
-		for (int j = 0; j < sizes[i]; j++)
-		{
+
 			bx_mean[i][j] = bx_variates[i][j];
-			
+
 			bx_precision[i][j] += importanceLearningRate; // TODO * tau[i][j] ? When dynamic taus.
 			bx_precision[i][j] *= 1.0f - certaintyDecay; // TODO heuristics here too ? 
 		}
@@ -475,48 +453,27 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 	setXtoMAP(true); // after quick and noisy tests, seems a bit more efficient. Can also use neither.
 	//sampleX(true);
 
-#ifdef PROSPECTIVE_GRAD
-	initializeDeltaX(true);
-#endif
 	float previousEnergy = computePerActivationEnergy();
 	for (int i = 0; i < _nSteps; i++)
 	{
 
-#ifdef PROSPECTIVE_GRAD
-		computeAllEpsilons();
-		for (int j = 0; j < nInternalSteps; j++)
-		{
-			internalGradientStep(true);
-		}
-		externalGradientStep(true);
-		setOptimalWB();
-#endif 
-		
-#ifdef ORDINARY_GD
-		LOG(previousEnergy * 100.f << std::setprecision(3));
+		LOG(previousEnergy * 100.f);
 		simultaneousAscentStep(true);
 		float currentEnergy = computePerActivationEnergy();
 
-		// Makes learning very unstable. Sometimes somewhat better results ! TODO theoretical study.
-		/*if (currentEnergy / previousEnergy > .99f) {
-			setOptimalWB();
-			LOG("WBU");
-			currentEnergy = computePerActivationEnergy();
-		}*/
+		// Makes learning very unstable in some setting. Sometimes somewhat better results ! TODO theoretical study.
+		// Moreover, should be a local operation since we are headed towards distributed computing.
+		//if (currentEnergy / previousEnergy > .99f) {
+			//setOptimalWB();
+		//	LOG("WBU");
+		//	currentEnergy = computePerActivationEnergy();
+		//}
 		
 		previousEnergy = currentEnergy;
-		
-#endif
-
-#ifdef BARYGRAD
-		normalizedAscentStep(true);
-		setOptimalWB();
-#endif
-
 	}
-	LOG(previousEnergy * 100.f << std::setprecision(3));
+	LOG(previousEnergy * 100.f);
 	setOptimalWB();
-	LOG(computePerActivationEnergy() * 100.f << std::setprecision(3));
+	LOG(" WBU  " << computePerActivationEnergy() * 100.f);
 
 
 	LOGL("\n"); 
@@ -540,7 +497,7 @@ void FCN::evaluate(float* _datapoint, int _nSteps)
 
 	for (int i = 0; i < _nSteps; i++)
 	{
-		LOG(computePerActivationEnergy() * 100.f << std::setprecision(3));
+		LOG(computePerActivationEnergy() * 100.f);
 
 #ifdef PROSPECTIVE_GRAD
 		computeAllEpsilons();
