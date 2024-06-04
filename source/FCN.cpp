@@ -453,13 +453,13 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 	setXtoMAP(true); // after quick and noisy tests, seems a bit more efficient. Can also use neither.
 	//sampleX(true);
 
-	float previousEnergy = computePerActivationEnergy();
+	//float previousEnergy = computePerActivationEnergy();
 	for (int i = 0; i < _nSteps; i++)
 	{
 
-		LOG(previousEnergy * 100.f);
+		//LOG(previousEnergy * 100.f);
 		simultaneousAscentStep(true);
-		float currentEnergy = computePerActivationEnergy();
+		//float currentEnergy = computePerActivationEnergy();
 
 		// Makes learning very unstable in some setting. Sometimes somewhat better results ! TODO theoretical study.
 		// Moreover, should be a local operation since we are headed towards distributed computing.
@@ -469,14 +469,14 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 		//	currentEnergy = computePerActivationEnergy();
 		//}
 		
-		previousEnergy = currentEnergy;
+		//previousEnergy = currentEnergy;
 	}
-	LOG(previousEnergy * 100.f);
+	//LOG(previousEnergy * 100.f);
 	setOptimalWB();
-	LOG(" WBU  " << computePerActivationEnergy() * 100.f);
+	//LOG(" WBU  " << computePerActivationEnergy() * 100.f);
 
 
-	LOGL("\n"); 
+	//LOGL("\n"); 
 
 	updateParameters();
 }
@@ -486,7 +486,7 @@ void FCN::evaluate(float* _datapoint, int _nSteps)
 	std::copy(_datapoint, _datapoint + datapointSize, x[0]);
 
 
-	//setWBtoMAP();
+	setWBtoMAP();
 	setXtoMAP(false);
 	//sampleX(false);
 
@@ -497,7 +497,7 @@ void FCN::evaluate(float* _datapoint, int _nSteps)
 
 	for (int i = 0; i < _nSteps; i++)
 	{
-		LOG(computePerActivationEnergy() * 100.f);
+		//LOG(computePerActivationEnergy() * 100.f);
 
 #ifdef PROSPECTIVE_GRAD
 		computeAllEpsilons();

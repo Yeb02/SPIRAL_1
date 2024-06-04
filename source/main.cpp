@@ -35,17 +35,17 @@ int main()
 	auto [batchedPoints, batchedLabels] = create_batches(trainDatapoints, trainLabels, trainSetSize, batchSize);
 	auto [testBatchedPoints, testBatchedLabels] = create_batches(testDatapoints, testLabels, testSetSize, batchSize);
 
-	LOG(std::setprecision(3));
+	LOG(std::setprecision(4));
 
 	bool dynamicTopology = true;
 
 	if (dynamicTopology)
 	{
-		Node::priorStrength = .3f;				 // > 0
+		Node::priorStrength = 1.f;				 // > 0
 		Node::activationDescentStepSize = .3f;	 // > 0
 		Node::observationImportance = 1.0f;      // > 0
 		Node::certaintyDecay = .95f;			 // <= 1
-		Node::weightRegularization = 1.0f;		 // <= 1
+		Node::weightRegularization = .01f;		 // <= 1
 
 		Network nn(datapointS, labelS);
 
@@ -133,8 +133,24 @@ int main()
 			for (int i = 0; i < 1000; i++)
 			{
 				nn.learn(batchedPoints[i], batchedLabels[i], 5);
+				if (i%100 == 0) LOGL("WTF")
 			}
 		}
+
+		nn.gradientStepSize = 2.f;
+		LOGL(nn.wx_mean[2][10]);
+		for (int i = 0; i < 1000; i++) {
+			nn.wx_mean[2][10] = ((float)i - 500.f) / 100.f;
+			float s = .0f;
+			for (int j = 0; j < 15; j++) {
+				nn.evaluate(testBatchedPoints[j], 10);
+				s += nn.computePerActivationEnergy();
+			}
+			s /= 15.f;
+			
+			LOG(s << ",");
+		}
+		LOG("\n");
 
 
 		int nTests = 1000;

@@ -5,7 +5,7 @@ float Node::priorStrength = .2f;
 float Node::activationDescentStepSize = .1f;
 float Node::observationImportance = 1.0f;
 float Node::certaintyDecay = .95f;
-float Node::weightRegularization = 1.0f;
+float Node::weightRegularization = .01f;
 
 
 Node::Node(int _nChildren, Node** _children) :
@@ -113,7 +113,7 @@ void Node::learnIncomingXWBvariates()
 		wx_precisions[k] += observationImportance;
 		wx_precisions[k] *= certaintyDecay; // TODO heuristics here too ?
 
-		wx_means[k] = wx_variates[k] * weightRegularization;
+		wx_means[k] = wx_variates[k] * (1.0f - weightRegularization * wx_variates[k]); // TODO regularization should be in the update function, not the learn one
 	}
 	
 	bx_mean = bx_variate;
