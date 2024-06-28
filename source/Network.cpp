@@ -28,8 +28,6 @@ void Network::asynchronousLearn(float* _datapoint, float* _label, int nSteps)
 	setDatapoint(_datapoint);
 	setLabel(_label);
 
-	initializeEpsilons();
-
 	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++) 
 	{
@@ -38,7 +36,7 @@ void Network::asynchronousLearn(float* _datapoint, float* _label, int nSteps)
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			nodes[i]->asynchronousActivationGradientStep();
-			//nodes[i]->updateIncomingXWBvariates(); // ? TODO
+			nodes[i]->asynchronousWeightGradientStep();
 		}
 
 		float currentEnergy = computeTotalActivationEnergy();
@@ -48,7 +46,6 @@ void Network::asynchronousLearn(float* _datapoint, float* _label, int nSteps)
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		nodes[i]->updateIncomingXWBvariates();
 		nodes[i]->learnIncomingXWBvariates();
 	}
 
@@ -59,8 +56,6 @@ void Network::asynchronousLearn(float* _datapoint, float* _label, int nSteps)
 void Network::asynchronousEvaluate(float* _datapoint, int nSteps) 
 {
 	setDatapoint(_datapoint);
-
-	initializeEpsilons();
 
 	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++)
@@ -103,8 +98,7 @@ void Network::setDatapoint(float* _datapoint)
 {
 	for (int i = 0; i < datapointSize; i++)
 	{
-		nodes[i]->x = _datapoint[i];
-		nodes[i]->fx = tanhf(_datapoint[i]); // Not needed right now, but could be forgotten in future versions...
+		nodes[i]->setActivation(_datapoint[i]);
 	}
 }
 
@@ -112,8 +106,7 @@ void Network::setLabel(float* _label)
 {
 	for (int i = 0; i < labelSize; i++)
 	{
-		nodes[i + datapointSize]->x = _label[i];
-		nodes[i + datapointSize]->fx = tanhf(_label[i]); // Not needed right now, but could be forgotten in future versions...
+		nodes[i + datapointSize]->setActivation(_label[i]);
 	}
 }
 

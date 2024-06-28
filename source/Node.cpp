@@ -3,9 +3,11 @@
 // Recommended values:
 float Node::priorStrength = .2f;
 float Node::activationDescentStepSize = .1f;
+float Node::wxDescentStepSize = .1f;
 float Node::observationImportance = 1.0f;
 float Node::certaintyDecay = .95f;
 float Node::weightRegularization = .01f;
+float Node::potentialConservation = .8f;
 
 
 Node::Node(int _nChildren, Node** _children) :
@@ -25,12 +27,15 @@ Node::Node(int _nChildren, Node** _children) :
 	wx_precisions = nullptr;
 
 	x = .0f; 
-	fx = .0f; 
-	epsilon = .0f;
+	epsilon = x - bx_variate;
+	fx = tanhf(x);
 
 #ifndef DYNAMIC_PRECISIONS
 	tau = 1.0f;
 #endif
+
+	potential = epsilon * tau * epsilon * tau;
+	accumulatedEnergy = .0f;
 }
 
 Node::~Node()
@@ -44,6 +49,23 @@ Node::~Node()
 }
 
 
+void Node::asynchronousWeightGradientStep()
+{
+	
+	for (int k = 0; k < nParents; k++)
+	{
+		float pfx = parents[k]->fx;
+		float delta = wxDescentStepSize * (epsilon * pfx * tau - (wx_variates[k] - wx_means[k]) * wx_precisions[k]) /
+			(pfx * pfx * tau + wx_precisions[k]);
+		wx_variates[k] += delta;
+		epsilon -= delta * pfx;
+	}
+	float delta = wxDescentStepSize * (epsilon * tau - (bx_variate - bx_mean) * bx_precision) / (tau + bx_precision);
+	bx_variate += delta;
+	epsilon -= delta;
+}
+
+
 void Node::asynchronousActivationGradientStep()
 {
 	float grad = -epsilon * tau;
@@ -51,7 +73,6 @@ void Node::asynchronousActivationGradientStep()
 	float grad_acc = .0f;
 
 	float H = tau;
-	float H_acc = .0f;
 	
 	for (int k = 0; k < nChildren; k++) 
 	{
@@ -59,16 +80,22 @@ void Node::asynchronousActivationGradientStep()
 		float w = c.wx_variates[inChildID[k]];
 		grad_acc += c.epsilon * c.tau * w;  
 
-		float fw = w * fprime;
-		H_acc += c.tau * fw * (c.epsilon * fx + fw);
+		float fpw = w * fprime;
+		H += abs(c.tau * fpw * (c.epsilon * fx + fpw)); 
+		//H += c.tau * fpw * (c.epsilon * fx + fpw);
+		//H = std::max(H, abs(c.tau * fpw))
+		// H = H; // just a reminder that simply setting H to tau has to be tested.
 	}
 	grad += fprime * grad_acc;
-	H += grad_acc;
 
+	potential = potential * potentialConservation + grad * grad * (1.f - potentialConservation);// TODO abs(grad) ?
 
 	float oldX = x;
+
+	// TODO when H is the exact second derivative, compare with and without clamping, both performance and convergence speed.
 	//x += std::clamp(activationDescentStepSize * grad / H, -.2f, .2f); 
-	x += activationDescentStepSize * grad / H; // TODO compare with and without clamping, both performance and convergence speed.
+	x += activationDescentStepSize * grad / H; 
+	//x += activationDescentStepSize * grad / std::min(abs(H), activationDescentStepSize*.1f); 
 	
 	epsilon = epsilon + x - oldX;
 	float new_fx = tanhf(x);
@@ -105,6 +132,7 @@ void Node::updateIncomingXWBvariates()
 	
 }
 
+
 void Node::learnIncomingXWBvariates()
 {
 	for (int k = 0; k < nParents; k++)
@@ -130,4 +158,17 @@ void Node::computeEpsilon()
 		epsilon += wx_variates[i] * parents[i]->fx;
 	}
 	epsilon = x - epsilon;
+}
+
+void Node::setActivation(float newX)
+{
+	epsilon = epsilon + newX - x;
+	x = newX;
+
+	float new_fx = tanhf(x);
+	for (int k = 0; k < nChildren; k++)
+	{
+		children[k]->epsilon += (new_fx - fx) * children[k]->wx_variates[inChildID[k]];
+	}
+	fx = new_fx;
 }

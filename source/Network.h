@@ -26,7 +26,6 @@ public:
 private:
 	int datapointSize, labelSize;
 	std::vector<Node*> nodes;
-	std::vector<Node*> virtualNodes;
 
 	void setDatapoint(float* _datapoint);
 	void setLabel(float* _label);

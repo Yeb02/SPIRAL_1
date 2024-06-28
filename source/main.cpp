@@ -38,14 +38,16 @@ int main()
 	LOG(std::setprecision(4));
 
 	bool dynamicTopology = true;
-
+	
 	if (dynamicTopology)
 	{
 		Node::priorStrength = 1.f;				 // > 0
-		Node::activationDescentStepSize = .3f;	 // > 0
+		Node::activationDescentStepSize = .95f;	 // > 0
+		Node::wxDescentStepSize = .1f;			 // > 0
 		Node::observationImportance = 1.0f;      // > 0
 		Node::certaintyDecay = .95f;			 // <= 1
 		Node::weightRegularization = .01f;		 // <= 1
+		Node::potentialConservation = .8f;		 // <= 1
 
 		Network nn(datapointS, labelS);
 
