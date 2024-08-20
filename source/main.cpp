@@ -37,7 +37,7 @@ int main()
 
 	LOG(std::setprecision(4));
 
-	bool dynamicTopology = true;
+	bool dynamicTopology = false;
 	
 	if (dynamicTopology)
 	{
@@ -103,12 +103,14 @@ int main()
 		int sizes[nLayers + 2] = { 0, datapointS, 10, labelS, 0 };
 #endif
 
-		float weightRegularization = 1.0f; // set to 1 to disable
-		float certaintyDecay = .02f;
-		float gradientStepSize = .5f;
 
-		//const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize, float _certaintyDecay
-		FCN nn(nLayers, &sizes[1], datapointS, weightRegularization, gradientStepSize, certaintyDecay);
+		FCN nn(nLayers, &sizes[1], datapointS);
+
+		nn.wReg = 1.f;  // set to 1 to disable
+		nn.xReg = 1.f;  // set to 1 to disable
+		nn.xlr = .5f;
+		nn.wlr = .2f;
+		nn.certaintyDecay = .02f;
 
 
 		// poor, TODO
@@ -135,24 +137,9 @@ int main()
 			for (int i = 0; i < 1000; i++)
 			{
 				nn.learn(batchedPoints[i], batchedLabels[i], 5);
-				if (i%100 == 0) LOGL("WTF")
+				if (i%100 == 0) LOGL(i)
 			}
 		}
-
-		nn.gradientStepSize = 2.f;
-		LOGL(nn.wx_mean[2][10]);
-		for (int i = 0; i < 1000; i++) {
-			nn.wx_mean[2][10] = ((float)i - 500.f) / 100.f;
-			float s = .0f;
-			for (int j = 0; j < 15; j++) {
-				nn.evaluate(testBatchedPoints[j], 10);
-				s += nn.computePerActivationEnergy();
-			}
-			s /= 15.f;
-			
-			LOG(s << ",");
-		}
-		LOG("\n");
 
 
 		int nTests = 1000;

@@ -15,6 +15,8 @@ public:
 	Network(int _datapointSize, int _labelSize);
 	~Network();
 
+	void createTopology(const int _nLayers, int* _sizes);
+
 	void asynchronousLearn(float* _datapoint, float* _label, int nSteps);
 	void asynchronousEvaluate(float* _datapoint, int nSteps);
 

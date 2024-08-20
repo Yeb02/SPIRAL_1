@@ -3,11 +3,14 @@
 #include <iomanip> // std::setprecision
 
 
-FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize, float _certaintyDecay) :
-	nLayers(_nLayers), sizes(_sizes), gradientStepSize(_gradientStepSize), datapointSize(_datapointSize),
-	weightRegularization(_weightRegularization), certaintyDecay(_certaintyDecay)
+FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize) :
+	nLayers(_nLayers), sizes(_sizes), datapointSize(_datapointSize)
 {
-
+	wReg = 1.f;  
+	xReg = 1.f;  
+	xlr = .5f;
+	wlr = .2f;
+	certaintyDecay = .2f;
 
 	wx_variates = new float*[nLayers];
 	wx_mean = new float*[nLayers];
@@ -48,7 +51,7 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 #endif
 
 		for (int j = 0; j < s; j++) {
-			wx_mean[i][j] = NORMAL_01 * .01f; // just for differentiation, to break the symmetry. Would be zero otherwise
+			wx_mean[i][j] = NORMAL_01 * .01f; 
 		}
 	
 
@@ -68,7 +71,7 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 #else
 		if ((i == 0) || (i == nLayers - 1) ) {
 #endif
-			// negligible strength because our priore is meaningless compared to the true observed data. 
+			// negligible strength because our prior is meaningless compared to the true observed data. 
 			// Unless very small, extremely noisy sample...
 			std::fill(bx_precision[i], bx_precision[i] + sizes[i], .001f); 
 		}
@@ -85,7 +88,7 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegul
 #endif
 
 		for (int j = 0; j < sizes[i]; j++) {
-			bx_mean[i][j] = NORMAL_01 * .01f; // just for differentiation, to break the symmetry. Would be zero otherwise
+			bx_mean[i][j] = NORMAL_01 * .01f; 
 		}
 
 
@@ -292,7 +295,7 @@ void FCN::simultaneousAscentStep(bool supervised)
 		{
 			for (int j = datapointSize; j < sizes[i]; j++) {
 				float gradx = -epsilon[i][j]; // if no nat grads *tau[i][j];
-				x[i][j] += gradientStepSize * gradx; 
+				x[i][j] += xlr * gradx; 
 			}
 		}
 		else if (i > 0) {
@@ -310,7 +313,7 @@ void FCN::simultaneousAscentStep(bool supervised)
 				gradx += fprime * grad_acc; // / sqrtf((float)sizes[i - 1]); // TODO 
 				// TODO . Est ce grave ? Je dirai que non comme il n'y a pas de second ordre donc d'interactions, et que les valeurs relatives du gradient
 				// d'un x à l'autre n'importent donc pas. Meilleures perfs avec clamp, mais convergence plus rapide sans clamp.
-				x[i][j] += std::clamp(gradientStepSize * gradx / tau[i][j], -.3f, .3f); // remove /tau[i][j]; if no nat grads 
+				x[i][j] += std::clamp(xlr * gradx / tau[i][j], -.3f, .3f); // remove /tau[i][j]; if no nat grads 
 				
 				// fx updated further down
 			}
@@ -372,7 +375,7 @@ void FCN::updateParameters()
 				wx_precision[i][id] += importanceLearningRate;
 				wx_precision[i][id] *= 1.0f - certaintyDecay; // TODO heuristics here too ?
 				
-				wx_mean[i][id] = wx_variates[i][id] * weightRegularization;
+				wx_mean[i][id] = wx_variates[i][id] * wReg;
 				
 				id++;
 			}
@@ -450,7 +453,7 @@ void FCN::learn(float* _datapoint, float* _label, int _nSteps)
 	}
 #endif
 
-	setXtoMAP(true); // after quick and noisy tests, seems a bit more efficient. Can also use neither.
+	setXtoMAP(true); // after quick and noisy tests, seems a bit more efficient. Can also use neither, and keep previous activations.
 	//sampleX(true);
 
 	//float previousEnergy = computePerActivationEnergy();
@@ -485,175 +488,18 @@ void FCN::evaluate(float* _datapoint, int _nSteps)
 {
 	std::copy(_datapoint, _datapoint + datapointSize, x[0]);
 
-
 	setWBtoMAP();
+
 	setXtoMAP(false);
 	//sampleX(false);
-
-
-#ifdef PROSPECTIVE_GRAD
-	initializeDeltaX(false);
-#endif
 
 	for (int i = 0; i < _nSteps; i++)
 	{
 		//LOG(computePerActivationEnergy() * 100.f);
-
-#ifdef PROSPECTIVE_GRAD
-		computeAllEpsilons();
-		for (int j = 0; j < nInternalSteps; j++)
-		{
-			internalGradientStep(false);
-		}
-		externalGradientStep(false);
-#endif 
-
-#ifdef ORDINARY_GD
 		simultaneousAscentStep(false);
-#endif
-
-#ifdef BARYGRAD
-		//setOptimalWB();
-		normalizedAscentStep(false);
-		
-#endif
-
 	}
 }
 
-
-#ifdef PROSPECTIVE_GRAD
-void FCN::externalGradientStep(bool supervised)
-{
-#ifdef LABEL_IS_DATAPOINT
-	for (int i = nLayers - 1; i >= 1; i--)
-#else
-	for (int i = nLayers - 1 - supervised; i >= 1; i--)
-#endif
-	{
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			x[i][j] += deltaX[i][j];
-			fx[i][j] = tanhf(x[i][j]);
-		}
-	}
-
-#ifdef LABEL_IS_DATAPOINT
-	if (!supervised) {
-		int id = 0;
-		for (int j = datapointSize; j < sizes[0]; j++)
-		{
-			x[0][j] += deltaX[0][j];
-			fx[0][j] = tanhf(x[0][j]);
-		}
-	}
-#endif
-}
-
-void FCN::internalGradientStep(bool supervised)
-{
-
-	// F1, F2
-	for (int i = 0; i < nLayers; i++) 
-	{
-		
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			float fp = 1.0f - fx[i][j] * fx[i][j];
-			F1[i][j] = fp * deltaX[i][j] * (1.0f - deltaX[i][j] * fx[i][j]);
-			F2[i][j] = fp * (1.0f - 2.0f * deltaX[i][j] * fx[i][j]);
-		}
-	}
-
-	// delta_mu, F3
-	for (int i = 0; i < nLayers; i++)
-	{
-		int id = 0;
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			deltaMu[i][j] = .0f;
-			for (int k = 0; k < sizes[i+1]; k++)
-			{
-				deltaMu[i][j] += F1[i+1][k] * wx_variates[i][id];
-				id++;
-			}
-			F3[i][j] = tau[i][j] * (deltaMu[i][j] - epsilon[i][j] - deltaX[i][j]);
-		}
-	}
-
-
-	// gradient, update deltaX
-	for (int i = 0; i < nLayers; i++)
-	{
-		float lambda_xl = 1.0f; //      / ((float)sizes[i - 1] + 1.0f); // more generally, should be nChildren + 1 
-		float lambda_mulm1 = 1.0f; //   / (float)sizes[i]; // more generally, should be nParents and therefore a per node factor.
-
-
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			float a1 = .0f, a2 = .0f;
-			for (int k = 0; k < sizes[i - 1]; k++)
-			{
-				a1 += F3[i-1][k] * wx_variates[i-1][k * sizes[i] + j];
-				a2 += tau[i-1][k] * deltaMu[i-1][k] * wx_variates[i-1][k * sizes[i] + j];
-			}
-
-			float grad = -F3[i][j] * gradientStepSize + F2[i][j] * (a1 * gradientStepSize + a2 * lambda_mulm1) + tau[i][j] * deltaX[i][j] * lambda_xl;
-			deltaX[i][j] += -internalGradientStepSize * grad;
-		}
-	}
-
-
-	// Yeah, laziest implementation ever
-	std::fill(deltaX[0], deltaX[0] + datapointSize, .0f);
-	if (supervised) 
-	{
-#ifdef LABEL_IS_DATAPOINT
-		std::fill(deltaX[0] + datapointSize, deltaX[0] + sizes[0], .0f);
-#else
-		int i = nLayers - 1;
-		std::fill(deltaX[i], deltaX[i] + sizes[i], .0f);
-#endif
-	}
-
-}
-
-
-
-void FCN::initializeDeltaX(bool supervised) 
-{
-//#ifdef LABEL_IS_DATAPOINT
-//	for (int i = nLayers - 1; i >= 1; i--)
-//#else
-//	for (int i = nLayers - 1 - supervised; i >= 1; i--)
-//#endif
-//	{
-//		for (int j = 0; j < sizes[i]; j++)
-//		{
-//			deltaX[i][j] = .0f;
-//		}
-//	}
-//
-//#ifdef LABEL_IS_DATAPOINT
-//	if (!supervised) {
-//		int id = 0;
-//		for (int j = datapointSize; j < sizes[0]; j++)
-//		{
-//			deltaX[0][j] = .0f;
-//		}
-//	}
-//#endif
-
-	for (int i = 0; i < nLayers; i++)
-	{
-		for (int j = 0; j < sizes[i]; j++)
-		{
-			deltaX[i][j] = .0f;
-		}
-	}
-}
-
-#endif
 
 void FCN::setOptimalWB()
 {

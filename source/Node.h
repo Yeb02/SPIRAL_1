@@ -7,49 +7,63 @@
 class Node 
 {
 public:
+
+	static float xlr;
+	static float wxlr;
+	static float wtlr;
+
+
+	// I tried to take a non-biasing approach to regularization. Hopefully this implementation achieves it, but i am unsure.
+	static float xReg;
+	static float wxReg;
+	static float wtReg;
+
 	static float priorStrength;
-	static float activationDescentStepSize;
-	static float wxDescentStepSize;
 	static float observationImportance;
-	static float weightRegularization;
 	static float certaintyDecay;
-	static float potentialConservation;
 
-	int nParents, nChildren;
 
-	// Allocated size of the array.
-	int parentArraySize;
+	int nChildren;
 
-	Node** parents, **children;
-	int* inChildID;
+	Node **children;
 
 	float bx_variate;
-	float bx_mean; // TODO unify mean and variate
+	float bx_mean; 
 	float bx_precision;
 	
-	// incoming weights
+	// outgoing weights predicting the children's activations
 	float* wx_variates;
-	float* wx_means; // TODO unify mean and variate
+	float* wx_means; 
 	float* wx_precisions;
 
-	float x, fx, tau, epsilon;
-	float potential, accumulatedEnergy;
+	float x, fx, tau, epsilon, mu;
+
 
 	Node(int _nChildren, Node** _children);
 	~Node();
 
-	void asynchronousActivationGradientStep();
-	void asynchronousWeightGradientStep();
+	// differs from synchronousGradientStep in that it notifies its children of their new predicted activation / tau
+	// The order of update is somewhat arbitrarily x then epsilon then b,w 
+	void asynchronousGradientStep();
 
-	// sets incoming weigths variates and the bias variate to the analytical optimum given the fixed activations of this node and its parents.
-	// Requires lambert's Ws for dynamic taus, so should not be used. "Deprecated"
-	void updateIncomingXWBvariates();
+	// differs from asynchronousGradientStep in that it does not notify its children of their new predicted activation / tau
+	// The order of update is somewhat arbitrarily x then epsilon then b,w
+	void synchronousGradientStep();
 
-	// Sets the MAP ('mean') to the variate. Should soon not be needed anymore  as those will be the same quantity.
-	void learnIncomingXWBvariates();
+	// Sets the MAP ('mean') to the variate, and updates the precision
+	void calcifyWB();
 
-	// Deprecated
+
+
+	// sets up (i.e. zeroes accumulators) this node to receive and make sense of prediction information regarding its mu and tau
+	void prepareToReceivePredictions();
+
+	// sends relevant information to the children for their mu and tau
+	void transmitPredictions();
+
+	// simply sets epsilon to  x - mu
 	void computeEpsilon();
 
+	// does not update the children's quantities ! (mu and tau)
 	void setActivation(float newX);
 };

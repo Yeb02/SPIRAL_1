@@ -7,12 +7,16 @@ struct FCN
 {
 	int nLayers;
 	int* sizes;
-
 	int datapointSize;
 
-	float weightRegularization; 
-	float gradientStepSize; 
+
+	//Must be set manually after construction:
+
+	float wReg, xReg; // regularization strength 
+	float xlr, wlr;   // learning rates aka gradient step sizes 
 	float certaintyDecay;
+
+
 	
 	// pre synaptic activations
 	float** x;
@@ -48,20 +52,8 @@ struct FCN
 	float** bx_precision;
 
 
-#ifdef PROSPECTIVE_GRAD
-	float internalGradientStepSize;
-	int nInternalSteps;
 
-	float** deltaX;
-	
-	float** F1;
-	float** F2;
-	float** F3;
-	float** deltaMu;
-#endif
-
-
-	FCN(const int _nLayers, int* _sizes, int _datapointSize, float _weightRegularization, float _gradientStepSize, float _certaintyDecay);
+	FCN(const int _nLayers, int* _sizes, int _datapointSize);
 
 	~FCN();
 
@@ -77,12 +69,8 @@ struct FCN
 	void simultaneousAscentStep(bool supervised);
 	void normalizedAscentStep(bool supervised);
 
-#ifdef PROSPECTIVE_GRAD
-	void externalGradientStep(bool supervised);
-	void internalGradientStep(bool supervised);
-	void initializeDeltaX(bool supervised);
-#endif
 	void setOptimalWB();
+	void gradStepWB();
 
 
 	void updateParameters();
