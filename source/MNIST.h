@@ -7,6 +7,20 @@
 #include <string>
 #include <tuple>
 
+int isCorrectAnswer(float* out, float* y) {
+    float outMax = -100000.0f;
+    int imax = -1;
+    for (int i = 0; i < 10; i++)
+    {
+        if (outMax < out[i]) {
+            outMax = out[i];
+            imax = i;
+        }
+    }
+
+    return y[imax] == 1.0f ? 1 : 0;
+}
+
 float** read_mnist_images(std::string full_path, int number_of_images) {
     auto reverseInt = [](int i) {
         unsigned char c1, c2, c3, c4;

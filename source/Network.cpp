@@ -1,17 +1,62 @@
 #include "Network.h"	
 
 
-Network::Network(int _datapointSize, int _labelSize) :
-	datapointSize(_datapointSize), labelSize(_labelSize)
+Network::Network(int _datapointSize, int _labelSize, int _nLayers, int* _sizes) :
+	datapointSize(_datapointSize), labelSize(_labelSize), nLayers(_nLayers), sizes(_sizes)
 {
 	output = new float[labelSize];
 
-	nodes.resize(datapointSize + labelSize);
-	for (int i = 0; i < nodes.size(); i++) 
+	if (sizes != nullptr) {
+		dynamicTopology = false;
+		int nNodes = 0;
+		for (int i = 0; i < nLayers; i++) {
+			nNodes += sizes[i];
+		}
+		nodes.resize(nNodes);
+
+		int offset = 0;
+		for (int i = 0; i < nLayers; i++)
+		{
+			// Works for i == 0 because sizes[] is padded by zeros (see main.cpp)
+			// Will throw an error if adress sanitizer is on though. But so much more convenient.
+			Node** children = new Node * [sizes[i - 1]]; 
+			std::copy(nodes.data() + offset - sizes[i - 1], nodes.data() + offset, children);
+
+			for (int j = 0; j < sizes[i]; j++) {
+				nodes[offset + j] = new Node(sizes[i - 1], children);
+			}
+
+			offset += sizes[i];
+			delete[] children;
+		}
+	}
+	else 
 	{
-		nodes[i] = new Node(0, nullptr);
+		dynamicTopology = true;
+
+		nodes.resize(datapointSize + labelSize);
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i] = new Node(0, nullptr);
+		}
+	}
+
+
+	// Set the nodes quatities to their correct values to prepare inference
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->prepareToReceivePredictions();
+	}
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->transmitPredictions();
+	}
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->computeLocalQuantities();
 	}
 }
+
 
 Network::~Network() 
 {
@@ -23,48 +68,89 @@ Network::~Network()
 }
 
 
+
+const bool randomOrder = true;
+
+
 void Network::asynchronousLearn(float* _datapoint, float* _label, int nSteps)
 {
-	setDatapoint(_datapoint);
-	setLabel(_label);
+	setActivities(_datapoint, _label);
+
+	int nClamped = datapointSize + labelSize;
 
 	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++) 
 	{
 		LOG(previousEnergy);
 
-		for (int i = 0; i < nodes.size(); i++)
+		if (randomOrder) {
+			std::vector<int> permutation1(nClamped);
+			for (int i = 0; i < nClamped; i++) permutation1[i] = i;
+			std::shuffle(permutation1.begin(), permutation1.end(), generator);
+			for (int i = 0; i < nClamped; i++)
+			{
+				nodes[permutation1[i]]->asynchronousGradientStep_WB_only();
+			}
+
+			std::vector<int> permutation2(nodes.size() - nClamped);
+			for (int i = 0; i < nodes.size() - nClamped; i++) permutation2[i] = i + nClamped;
+			std::shuffle(permutation2.begin(), permutation2.end(), generator);
+			for (int i = 0; i < nodes.size() - nClamped; i++)
+			{
+				nodes[permutation2[i]]->asynchronousGradientStep();
+			}
+		} else 
 		{
-			nodes[i]->asynchronousActivationGradientStep();
-			nodes[i]->asynchronousWeightGradientStep();
+			for (int i = 0; i < nClamped; i++)
+			{
+				nodes[i]->asynchronousGradientStep_WB_only();
+			}
+			for (int i = nClamped; i < nodes.size(); i++)
+			{
+				nodes[i]->asynchronousGradientStep();
+			}
 		}
+
 
 		float currentEnergy = computeTotalActivationEnergy();
 		previousEnergy = currentEnergy;
 	}
-	LOG(previousEnergy);	
+	LOG(previousEnergy << "\n");
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		nodes[i]->learnIncomingXWBvariates();
+		nodes[i]->calcifyWB();
 	}
-
-	LOG(" WBU  " << computeTotalActivationEnergy());
-	LOGL("\n");
 }
+
 
 void Network::asynchronousEvaluate(float* _datapoint, int nSteps) 
 {
-	setDatapoint(_datapoint);
+	setActivities(_datapoint, nullptr);
+
+	int nClamped = datapointSize;
 
 	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++)
 	{
 		LOG(previousEnergy);
 
-		for (int i = 0; i < nodes.size(); i++)
+		if (randomOrder) {
+
+			std::vector<int> permutation2(nodes.size() - nClamped);
+			for (int i = 0; i < nodes.size() - nClamped; i++) permutation2[i] = i + nClamped;
+			std::shuffle(permutation2.begin(), permutation2.end(), generator);
+			for (int i = 0; i < nodes.size() - nClamped; i++)
+			{
+				nodes[permutation2[i]]->asynchronousGradientStep_X_only();
+			}
+		}
+		else
 		{
-			nodes[i]->asynchronousActivationGradientStep();
+			for (int i = nClamped; i < nodes.size(); i++)
+			{
+				nodes[i]->asynchronousGradientStep_X_only();
+			}
 		}
 
 		float currentEnergy = computeTotalActivationEnergy();
@@ -77,45 +163,54 @@ void Network::asynchronousEvaluate(float* _datapoint, int nSteps)
 	{
 		output[i] = nodes[datapointSize + i]->x;
 	}
+
 }
 
 
 
 float Network::computeTotalActivationEnergy()
 {
-	float E = 0.f;
+	float E2 = 0.f;
+	float Elog = 0.f;
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		E += nodes[i]->epsilon * nodes[i]->epsilon * nodes[i]->tau - logf(nodes[i]->tau); // + constants
+		nodes[i]->computeLocalQuantities(); // just in case ?
+
+		E2 += .5f * nodes[i]->epsilon * nodes[i]->epsilon * nodes[i]->tau;
+		Elog += - logf(nodes[i]->tau); 
+		// + constants
 	}
 
-	return .5f * E;
+	return E2 *.5f + Elog;
 }
 
 
-void Network::setDatapoint(float* _datapoint)
+void Network::setActivities(float* _datapoint, float* _label)
 {
-	for (int i = 0; i < datapointSize; i++)
+
+	if (_datapoint != nullptr)
 	{
-		nodes[i]->setActivation(_datapoint[i]);
+		for (int i = 0; i < datapointSize; i++)
+		{
+			nodes[i]->setActivation(_datapoint[i]);
+		}
 	}
-}
-
-void Network::setLabel(float* _label) 
-{
-	for (int i = 0; i < labelSize; i++)
+	if (_label != nullptr)
 	{
-		nodes[i + datapointSize]->setActivation(_label[i]);
+		for (int i = 0; i < labelSize; i++)
+		{
+			nodes[i + datapointSize]->setActivation(_label[i]);
+		}
 	}
-}
 
-
-void Network::initializeEpsilons() 
-{
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		nodes[i]->computeEpsilon();
+		if (!nodes[i]->quantitiesUpToDate) [[unlikely]]
+		{
+			nodes[i]->computeLocalQuantities();
+		}
 	}
 }
+
 

@@ -3,7 +3,6 @@
 #include "SPIRAL_includes.h"
 #include "Node.h"
 
-#include <vector>
 
 
 class Network 
@@ -12,12 +11,13 @@ public:
 	
 
 
-	Network(int _datapointSize, int _labelSize);
+	Network(int _datapointSize, int _labelSize, int _nLayers = 0, int* _sizes = nullptr);
+
 	~Network();
 
-	void createTopology(const int _nLayers, int* _sizes);
 
 	void asynchronousLearn(float* _datapoint, float* _label, int nSteps);
+
 	void asynchronousEvaluate(float* _datapoint, int nSteps);
 
 	float computeTotalActivationEnergy();
@@ -26,12 +26,18 @@ public:
 	float* output;
 
 private:
+
 	int datapointSize, labelSize;
+
+	bool dynamicTopology;
+
+	// used only if fixed topology is enforced
+	int nLayers, * sizes;
+
+	// the first datapointSize nodes correspond to the datapoint, the labelSize next to the label.
 	std::vector<Node*> nodes;
 
-	void setDatapoint(float* _datapoint);
-	void setLabel(float* _label);
+	void setActivities(float* _datapoint = nullptr, float* _label = nullptr);
 
-	void initializeEpsilons();
 
 };

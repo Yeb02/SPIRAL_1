@@ -1,21 +1,28 @@
 #include "Node.h"
 
 // Recommended values:
-float Node::priorStrength = .2f;
+
 float Node::xlr = 1.f;
 float Node::wxlr = .1f;
 float Node::wtlr = .1f;
+
+float Node::priorStrength = .2f;
 float Node::observationImportance = 1.0f;
 float Node::certaintyDecay = .95f;
+
 float Node::xReg = .01f;
 float Node::wxReg = .01f;
 float Node::wtReg = .01f;
 
 
 Node::Node(int _nChildren, Node** _children) :
-	nChildren(_nChildren), children(_children)
+	nChildren(_nChildren)
 {
 	
+
+	children = new Node*[nChildren];
+	std::copy(_children, _children + nChildren, children);
+
 	bx_mean = NORMAL_01 * .01f;
 	bx_precision = priorStrength;
 	bx_variate = bx_mean;
@@ -30,13 +37,15 @@ Node::Node(int _nChildren, Node** _children) :
 
 	mu = bx_variate;
 	x = NORMAL_01 * .01f;
-	epsilon = x - bx_variate;
+	
 	fx = tanhf(x);
 
 #ifndef DYNAMIC_PRECISIONS
 	tau = 1.0f;
 #endif
 
+	computeLocalQuantities();
+	// sets quantitiesUpToDate = true. A convention, as this node can't know. It is the network's job.
 }
 
 Node::~Node()
@@ -48,9 +57,11 @@ Node::~Node()
 }
 
 
-
+// Dont forget to change the other 2 functions below when touching this one !
 void Node::asynchronousGradientStep()
 {
+	computeLocalQuantities();
+
 	float grad = -epsilon * tau;
 	float fprime = 1.0f - powf(fx, 2.f);
 	float grad_acc = .0f;
@@ -77,6 +88,7 @@ void Node::asynchronousGradientStep()
 	x += deltaX;
 	epsilon = x - mu;
 
+
 	float Hb = tau + bx_precision;	// L1, not the real H
 	float deltaB = wxlr * (epsilon * tau + bx_precision * (bx_mean - bx_variate)) / Hb;
 
@@ -85,27 +97,99 @@ void Node::asynchronousGradientStep()
 	epsilon = x - mu;
 
 
-	float new_fx = tanhf(x);
+	float deltaFX = tanhf(x) - fx;
+	fx += deltaFX;
 	for (int k = 0; k < nChildren; k++)
 	{
 		Node& c = *children[k];
 
 		// between x and w update. Put like this for clarity, but could be updated only at the end of the loop iteration for efficiency.
-		c.mu += (new_fx - fx) * wx_variates[k]; 
-		c.epsilon = c.x - c.mu; 
+		c.mu += deltaFX * wx_variates[k]; 
+		c.computeLocalQuantities(); 
 
-		float Hw = c.tau * new_fx * new_fx + wx_precisions[k];	// L1, not the real H
+		float Hw = c.tau * fx * fx + wx_precisions[k];	// L1, not the real H
 		
-		float deltaW = wxlr * (c.epsilon * c.tau * new_fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hw;
+		float deltaW = wxlr * (c.epsilon * c.tau * fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hw;
 		deltaW *= 1.0f - (wx_variates[k] * deltaW > 0.f) * wxReg;
 
-		c.mu += new_fx * deltaW;
-		c.epsilon = c.x - c.mu;
+		c.mu += fx * deltaW;
+		// c.computeLocalQuantities(); superfluous (not blatant but trust past you)
 
 		wx_variates[k] += deltaW;
 	}
-	fx = new_fx;
 }
+
+
+void Node::asynchronousGradientStep_X_only()
+{
+	computeLocalQuantities();
+
+	float grad = -epsilon * tau;
+	float fprime = 1.0f - powf(fx, 2.f);
+	float grad_acc = .0f;
+
+	float H = tau;
+
+	for (int k = 0; k < nChildren; k++)
+	{
+		Node& c = *children[k];
+		grad_acc += c.epsilon * c.tau * wx_variates[k];
+
+		float fpw = wx_variates[k] * fprime;
+		H += abs(c.tau * fpw * (c.epsilon * fx + fpw));  // L1 H
+		//H += c.tau * fpw * (c.epsilon * fx + fpw);
+		//H = std::max(H, abs(c.tau * fpw))
+		// H = H; // just a reminder that simply setting H to tau has to be tested.
+	}
+	grad += fprime * grad_acc;
+
+	float deltaX = xlr * grad / H;
+	//float deltaX = std::clamp(xlr * grad / H, -.2f, .2f); 
+
+	deltaX *= 1.0f - (x * deltaX > 0.f) * xReg;
+	x += deltaX;
+	epsilon = x - mu;
+
+
+	float deltaFX = tanhf(x) - fx;
+	fx += deltaFX;
+	for (int k = 0; k < nChildren; k++)
+	{
+		Node& c = *children[k];
+		c.mu += deltaFX * wx_variates[k];
+		// c.computeLocalQuantities(); superfluous (not blatant but trust past you)
+	}
+}
+
+void Node::asynchronousGradientStep_WB_only()
+{
+	computeLocalQuantities();
+
+	float Hb = tau + bx_precision;	// L1, not the real H
+	float deltaB = wxlr * (epsilon * tau + bx_precision * (bx_mean - bx_variate)) / Hb;
+
+	bx_variate += deltaB;
+	mu += deltaB;
+	epsilon = x - mu;
+
+
+	for (int k = 0; k < nChildren; k++)
+	{
+		Node& c = *children[k];
+
+		c.computeLocalQuantities(); // not superfluous (not blatant but trust past you)
+		float Hw = c.tau * fx * fx + wx_precisions[k];	// L1, not the real H
+
+		float deltaW = wxlr * (c.epsilon * c.tau * fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hw;
+		deltaW *= 1.0f - (wx_variates[k] * deltaW > 0.f) * wxReg;
+
+		c.mu += fx * deltaW;
+		// c.computeLocalQuantities(); superfluous (not blatant but trust past you)
+
+		wx_variates[k] += deltaW;
+	}
+}
+
 
 
 void Node::synchronousGradientStep()
@@ -177,5 +261,35 @@ void Node::setActivation(float newX)
 {
 	epsilon = epsilon + newX - x;
 	x = newX;
-	fx = tanhf(x);
+	
+	float deltaFX = tanhf(x) - fx;
+	fx += deltaFX;
+
+	for (int k = 0; k < nChildren; k++)
+	{
+		children[k]->quantitiesUpToDate = false;
+		children[k]->mu += deltaFX * wx_variates[k];
+		// TODO tau..
+	}
+}
+
+void Node::prepareToReceivePredictions()
+{
+	mu = bx_variate;
+}
+
+void Node::transmitPredictions()
+{
+	for (int k = 0; k < nChildren; k++)
+	{
+		children[k]->mu += fx * wx_variates[k];
+		// tau..
+	}
+}
+
+void Node::computeLocalQuantities() 
+{
+	epsilon = x - mu;
+	// tau...
+	quantitiesUpToDate = true;
 }

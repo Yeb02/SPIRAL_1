@@ -3,19 +3,6 @@
 #include "MNIST.h"
 
 
-int isCorrectAnswer(float* out, float* y) {
-	float outMax = -1000.0f;
-	int imax = -1;
-	for (int i = 0; i < 10; i++)
-	{
-		if (outMax < out[i]) {
-			outMax = out[i];
-			imax = i;
-		}
-	}
-
-	return y[imax] == 1.0f ? 1 : 0;
-}
 
 int main()
 {
@@ -37,19 +24,43 @@ int main()
 
 	LOG(std::setprecision(4));
 
-	bool dynamicTopology = false;
-	
-	if (dynamicTopology)
-	{
-		Node::priorStrength = 1.f;				 // > 0
-		Node::activationDescentStepSize = .95f;	 // > 0
-		Node::wxDescentStepSize = .1f;			 // > 0
-		Node::observationImportance = 1.0f;      // > 0
-		Node::certaintyDecay = .95f;			 // <= 1
-		Node::weightRegularization = .01f;		 // <= 1
-		Node::potentialConservation = .8f;		 // <= 1
 
-		Network nn(datapointS, labelS);
+
+
+
+	bool testNetworkClass = true;
+	
+	if (testNetworkClass)
+	{
+		Node::xlr = .5f;
+		Node::wxlr = .2f;
+		Node::wtlr = .1f;
+
+		Node::priorStrength = .2f;
+		Node::observationImportance = 1.0f;
+		Node::certaintyDecay = .95f;
+
+		Node::xReg = .0f;
+		Node::wxReg = .0f;
+		Node::wtReg = .0f;
+
+		bool dynamicTopology = false;
+		//dynamicTopology = true;
+
+		// C++ is really stupid sometimes
+		const int _nLayers = 4;
+		int _sizes[_nLayers + 2] = {0, datapointS + labelS, 20, 15, 10 , 0};
+
+		int nLayers = _nLayers;
+		int* sizes = &(_sizes[1]);
+
+		if (dynamicTopology) 
+		{
+			nLayers = 0;
+			sizes = nullptr;
+		}
+		
+		Network nn(datapointS, labelS, nLayers, sizes);
 
 		
 		bool onePerClass = true;
