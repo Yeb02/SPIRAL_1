@@ -40,7 +40,21 @@ Node::Node(int _nChildren, Node** _children) :
 	
 	fx = tanhf(x);
 
-#ifndef DYNAMIC_PRECISIONS
+#ifdef DYNAMIC_PRECISIONS
+
+	bt_mean = NORMAL_01 * .01f;
+	bt_precision = priorStrength;
+	bt_variate = bt_mean;
+
+	wt_means = new float[nChildren];
+	wt_precisions = new float[nChildren];
+	wt_variates = new float[nChildren];
+
+	std::fill(wt_precisions, wt_precisions + nChildren, priorStrength);
+	for (int i = 0; i < nChildren; i++) wt_means[i] = NORMAL_01 * .01f;
+	std::copy(wt_means, wt_means + nChildren, wt_variates);
+
+#else
 	tau = 1.0f;
 #endif
 
@@ -60,7 +74,6 @@ Node::~Node()
 // Dont forget to change the other 2 functions below when touching this one !
 void Node::asynchronousGradientStep()
 {
-	computeLocalQuantities();
 
 	float grad = -epsilon * tau;
 	float fprime = 1.0f - powf(fx, 2.f);
@@ -74,17 +87,32 @@ void Node::asynchronousGradientStep()
 		grad_acc += c.epsilon * c.tau * wx_variates[k];
 
 		float fpw = wx_variates[k] * fprime;
-		H += abs(c.tau * fpw * (c.epsilon * fx + fpw));  // L1 H
-		//H += c.tau * fpw * (c.epsilon * fx + fpw);
-		//H = std::max(H, abs(c.tau * fpw))
-		// H = H; // just a reminder that simply setting H to tau has to be tested.
+
+#ifdef NO_SECOND_ORDER
+		//
+#elif defined SECOND_ORDER_TAU
+		//
+#elif defined SECOND_ORDER_MAX
+		H = std::max(H, abs(c.tau * fpw));
+#elif defined SECOND_ORDER_L1
+		H += abs(c.tau * fpw * (c.epsilon * fx + fpw));
+#elif defined SECOND_ORDER_EXACT
+		H += c.tau * fpw * (c.epsilon * fx + fpw);
+#endif
 	}
 	grad += fprime * grad_acc;
 
-	float deltaX = xlr * grad / H;
-	//float deltaX = std::clamp(xlr * grad / H, -.2f, .2f); 
+#ifdef NO_SECOND_ORDER
+	H = 1.f;
+#endif
 
-	deltaX *= 1.0f - (x * deltaX > 0.f) * xReg;
+	float deltaX = xlr * grad / H;
+#ifdef SECOND_ORDER_EXACT
+	deltaX = std::clamp(xlr * grad / H, -.2f, .2f); 
+#endif
+	
+
+	deltaX *= 1.0f - ((x * deltaX) > 0.f) * xReg;
 	x += deltaX;
 	epsilon = x - mu;
 
@@ -110,10 +138,10 @@ void Node::asynchronousGradientStep()
 		float Hw = c.tau * fx * fx + wx_precisions[k];	// L1, not the real H
 		
 		float deltaW = wxlr * (c.epsilon * c.tau * fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hw;
-		deltaW *= 1.0f - (wx_variates[k] * deltaW > 0.f) * wxReg;
+		deltaW *= 1.0f - ((wx_variates[k] * deltaW) > 0.f) * wxReg;
 
 		c.mu += fx * deltaW;
-		// c.computeLocalQuantities(); superfluous (not blatant but trust past you)
+		c.computeLocalQuantities(); 
 
 		wx_variates[k] += deltaW;
 	}
@@ -122,7 +150,6 @@ void Node::asynchronousGradientStep()
 
 void Node::asynchronousGradientStep_X_only()
 {
-	computeLocalQuantities();
 
 	float grad = -epsilon * tau;
 	float fprime = 1.0f - powf(fx, 2.f);
@@ -136,17 +163,31 @@ void Node::asynchronousGradientStep_X_only()
 		grad_acc += c.epsilon * c.tau * wx_variates[k];
 
 		float fpw = wx_variates[k] * fprime;
-		H += abs(c.tau * fpw * (c.epsilon * fx + fpw));  // L1 H
-		//H += c.tau * fpw * (c.epsilon * fx + fpw);
-		//H = std::max(H, abs(c.tau * fpw))
-		// H = H; // just a reminder that simply setting H to tau has to be tested.
+#ifdef NO_SECOND_ORDER
+		//
+#elif defined SECOND_ORDER_TAU
+		//
+#elif defined SECOND_ORDER_MAX
+		H = std::max(H, abs(c.tau * fpw));
+#elif defined SECOND_ORDER_L1
+		H += abs(c.tau * fpw * (c.epsilon * fx + fpw));
+#elif defined SECOND_ORDER_EXACT
+		H += c.tau * fpw * (c.epsilon * fx + fpw);
+#endif
 	}
+
+#ifdef NO_SECOND_ORDER
+	H = 1.f;
+#endif
+
 	grad += fprime * grad_acc;
 
 	float deltaX = xlr * grad / H;
-	//float deltaX = std::clamp(xlr * grad / H, -.2f, .2f); 
+#ifdef SECOND_ORDER_EXACT
+	deltaX = std::clamp(xlr * grad / H, -.2f, .2f);
+#endif
 
-	deltaX *= 1.0f - (x * deltaX > 0.f) * xReg;
+	deltaX *= 1.0f - ((x * deltaX) > 0.f) * xReg;
 	x += deltaX;
 	epsilon = x - mu;
 
@@ -157,13 +198,12 @@ void Node::asynchronousGradientStep_X_only()
 	{
 		Node& c = *children[k];
 		c.mu += deltaFX * wx_variates[k];
-		// c.computeLocalQuantities(); superfluous (not blatant but trust past you)
+		c.computeLocalQuantities(); 
 	}
 }
 
 void Node::asynchronousGradientStep_WB_only()
 {
-	computeLocalQuantities();
 
 	float Hb = tau + bx_precision;	// L1, not the real H
 	float deltaB = wxlr * (epsilon * tau + bx_precision * (bx_mean - bx_variate)) / Hb;
@@ -177,14 +217,13 @@ void Node::asynchronousGradientStep_WB_only()
 	{
 		Node& c = *children[k];
 
-		c.computeLocalQuantities(); // not superfluous (not blatant but trust past you)
 		float Hw = c.tau * fx * fx + wx_precisions[k];	// L1, not the real H
 
 		float deltaW = wxlr * (c.epsilon * c.tau * fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hw;
-		deltaW *= 1.0f - (wx_variates[k] * deltaW > 0.f) * wxReg;
+		deltaW *= 1.0f - ((wx_variates[k] * deltaW) > 0.f) * wxReg;
 
 		c.mu += fx * deltaW;
-		// c.computeLocalQuantities(); superfluous (not blatant but trust past you)
+		c.computeLocalQuantities();
 
 		wx_variates[k] += deltaW;
 	}

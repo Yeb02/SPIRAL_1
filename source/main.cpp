@@ -32,24 +32,28 @@ int main()
 	
 	if (testNetworkClass)
 	{
-		Node::xlr = .5f;
-		Node::wxlr = .2f;
+
+		Node::xlr = .8f;
+		Node::wxlr = .3f;
 		Node::wtlr = .1f;
 
 		Node::priorStrength = .2f;
-		Node::observationImportance = 1.0f;
-		Node::certaintyDecay = .95f;
+		Node::observationImportance = 1.f;
+		Node::certaintyDecay = .98f;
 
-		Node::xReg = .0f;
+		Node::xReg = .1f;
 		Node::wxReg = .0f;
 		Node::wtReg = .0f;
+
+		int nTrainSteps = 3; // Suprisingly, less steps leads to much MUCH better results.
+		int nTestSteps = 5;
 
 		bool dynamicTopology = false;
 		//dynamicTopology = true;
 
 		// C++ is really stupid sometimes
 		const int _nLayers = 4;
-		int _sizes[_nLayers + 2] = {0, datapointS + labelS, 20, 15, 10 , 0};
+		int _sizes[_nLayers + 2] = {0, datapointS + labelS, 20, 15, 10, 0};
 
 		int nLayers = _nLayers;
 		int* sizes = &(_sizes[1]);
@@ -66,7 +70,7 @@ int main()
 		bool onePerClass = true;
 		onePerClass = false;
 		if (onePerClass) {
-			for (int u = 0; u < 1; u++) {
+			for (int u = 0; u < 3; u++) {
 				for (int i = 0; i < 10; i++) {
 					int id = 0;
 					while (batchedLabels[id][i] != 1.0f) {
@@ -74,12 +78,13 @@ int main()
 					}
 					nn.asynchronousLearn(batchedPoints[id], batchedLabels[id], 10);
 				}
+				LOG("LOOP " << u << " done.\n\n")
 			}
 		}
 		else {
 			for (int i = 0; i < 1000; i++)
 			{
-				nn.asynchronousLearn(batchedPoints[i], batchedLabels[i], 5);
+				nn.asynchronousLearn(batchedPoints[i], batchedLabels[i], nTrainSteps);
 			}
 		}
 
@@ -89,7 +94,7 @@ int main()
 		float* output = nn.output;
 		for (int i = 0; i < nTests; i++)
 		{
-			nn.asynchronousEvaluate(testBatchedPoints[i], 10);
+			nn.asynchronousEvaluate(testBatchedPoints[i], nTestSteps);
 			LOG("\n");
 
 

@@ -68,7 +68,7 @@ Network::~Network()
 }
 
 
-
+// Better when enabled
 const bool randomOrder = true;
 
 
@@ -115,7 +115,7 @@ void Network::asynchronousLearn(float* _datapoint, float* _label, int nSteps)
 		float currentEnergy = computeTotalActivationEnergy();
 		previousEnergy = currentEnergy;
 	}
-	LOG(previousEnergy << "\n");
+	LOG(previousEnergy << "\n\n");
 
 	for (int i = 0; i < nodes.size(); i++)
 	{

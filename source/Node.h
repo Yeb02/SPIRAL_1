@@ -35,6 +35,17 @@ public:
 	float* wx_means; 
 	float* wx_precisions;
 
+#ifdef DYNAMIC_PRECISIONS
+	float bt_variate;
+	float bt_mean;
+	float bt_precision;
+
+	// outgoing weights computing the children's tau
+	float* wt_variates;
+	float* wt_means;
+	float* wt_precisions;
+#endif
+
 	float x, fx, tau, epsilon, mu;
 
 	// A util for the Network. True if epsilon, mu, tau, ... have the correct value corresponding to the parent's activations and weights.
