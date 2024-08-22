@@ -13,6 +13,6 @@
 //#define SECOND_ORDER_EXACT
 
 
-//#define DYNAMIC_PRECISIONS
+#define DYNAMIC_PRECISIONS
 
 

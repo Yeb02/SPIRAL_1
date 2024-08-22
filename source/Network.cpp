@@ -68,9 +68,8 @@ Network::~Network()
 }
 
 
-// Better when enabled
+// Better when enabled. When true, asynchronous updates are performed with a random permutation.
 const bool randomOrder = true;
-
 
 void Network::asynchronousLearn(float* _datapoint, float* _label, int nSteps)
 {
@@ -123,7 +122,6 @@ void Network::asynchronousLearn(float* _datapoint, float* _label, int nSteps)
 	}
 }
 
-
 void Network::asynchronousEvaluate(float* _datapoint, int nSteps) 
 {
 	setActivities(_datapoint, nullptr);
@@ -168,6 +166,130 @@ void Network::asynchronousEvaluate(float* _datapoint, int nSteps)
 
 
 
+void Network::synchronousLearn(float* _datapoint, float* _label, int nSteps)
+{
+	setActivities(_datapoint, _label);
+
+	int nClamped = datapointSize + labelSize;
+
+	float previousEnergy = computeTotalActivationEnergy();
+	for (int s = 0; s < nSteps; s++)
+	{
+		LOG(previousEnergy);
+
+		if (randomOrder) {
+			std::vector<int> permutation1(nClamped);
+			for (int i = 0; i < nClamped; i++) permutation1[i] = i;
+			std::shuffle(permutation1.begin(), permutation1.end(), generator);
+			for (int i = 0; i < nClamped; i++)
+			{
+				nodes[permutation1[i]]->synchronousGradientStep_WB_only();
+			}
+
+			std::vector<int> permutation2(nodes.size() - nClamped);
+			for (int i = 0; i < nodes.size() - nClamped; i++) permutation2[i] = i + nClamped;
+			std::shuffle(permutation2.begin(), permutation2.end(), generator);
+			for (int i = 0; i < nodes.size() - nClamped; i++)
+			{
+				nodes[permutation2[i]]->synchronousGradientStep();
+			}
+		}
+		else
+		{
+			for (int i = 0; i < nClamped; i++)
+			{
+				nodes[i]->synchronousGradientStep_WB_only();
+			}
+			for (int i = nClamped; i < nodes.size(); i++)
+			{
+				nodes[i]->synchronousGradientStep();
+			}
+		}
+
+
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->prepareToReceivePredictions();
+		}
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->transmitPredictions();
+		}
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->computeLocalQuantities();
+		}
+
+		float currentEnergy = computeTotalActivationEnergy();
+		previousEnergy = currentEnergy;
+	}
+	LOG(previousEnergy << "\n\n");
+
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->calcifyWB();
+	}
+}
+
+void Network::synchronousEvaluate(float* _datapoint, int nSteps)
+{
+	setActivities(_datapoint, nullptr);
+
+	int nClamped = datapointSize;
+
+	float previousEnergy = computeTotalActivationEnergy();
+	for (int s = 0; s < nSteps; s++)
+	{
+		LOG(previousEnergy);
+
+		if (randomOrder) {
+
+			std::vector<int> permutation2(nodes.size() - nClamped);
+			for (int i = 0; i < nodes.size() - nClamped; i++) permutation2[i] = i + nClamped;
+			std::shuffle(permutation2.begin(), permutation2.end(), generator);
+			for (int i = 0; i < nodes.size() - nClamped; i++)
+			{
+				nodes[permutation2[i]]->synchronousGradientStep_X_only();
+			}
+		}
+		else
+		{
+			for (int i = nClamped; i < nodes.size(); i++)
+			{
+				nodes[i]->synchronousGradientStep_X_only();
+			}
+		}
+
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->prepareToReceivePredictions();
+		}
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->transmitPredictions();
+		}
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->computeLocalQuantities();
+		}
+
+		float currentEnergy = computeTotalActivationEnergy();
+		previousEnergy = currentEnergy;
+	}
+
+	LOG(previousEnergy);
+
+	for (int i = 0; i < labelSize; i++)
+	{
+		output[i] = nodes[datapointSize + i]->x;
+	}
+
+}
+
+
+
+
+
 float Network::computeTotalActivationEnergy()
 {
 	float E2 = 0.f;
@@ -204,12 +326,10 @@ void Network::setActivities(float* _datapoint, float* _label)
 		}
 	}
 
+	// inefficient, but no easy way to do much better
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		if (!nodes[i]->quantitiesUpToDate) [[unlikely]]
-		{
-			nodes[i]->computeLocalQuantities();
-		}
+		nodes[i]->computeLocalQuantities(); 
 	}
 }
 

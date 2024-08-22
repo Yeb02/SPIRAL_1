@@ -37,7 +37,8 @@ int main()
 		Node::wxlr = .3f;
 		Node::wtlr = .1f;
 
-		Node::priorStrength = .2f;
+		Node::wxPriorStrength = .2f;
+		Node::wtPriorStrength = 3.f;
 		Node::observationImportance = 1.f;
 		Node::certaintyDecay = .98f;
 
@@ -45,15 +46,20 @@ int main()
 		Node::wxReg = .0f;
 		Node::wtReg = .0f;
 
-		int nTrainSteps = 3; // Suprisingly, less steps leads to much MUCH better results.
+		int nTrainSteps = 3; // Suprisingly, less steps leads to much better results. More step require lower wxlr.
 		int nTestSteps = 5;
-
-		bool dynamicTopology = false;
-		//dynamicTopology = true;
-
+		
+		constexpr bool dynamicTopology = false;
+		constexpr bool synchronizedDescent = false;
+		
 		// C++ is really stupid sometimes
 		const int _nLayers = 4;
 		int _sizes[_nLayers + 2] = {0, datapointS + labelS, 20, 15, 10, 0};
+		/*const int _nLayers = 2;
+		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 10, 0 };*/
+
+
+
 
 		int nLayers = _nLayers;
 		int* sizes = &(_sizes[1]);
@@ -82,9 +88,10 @@ int main()
 			}
 		}
 		else {
-			for (int i = 0; i < 1000; i++)
+			for (int i = 0; i < 500; i++)
 			{
-				nn.asynchronousLearn(batchedPoints[i], batchedLabels[i], nTrainSteps);
+				if (synchronizedDescent) nn.synchronousLearn(batchedPoints[i], batchedLabels[i], nTrainSteps);
+				else nn.asynchronousLearn(batchedPoints[i], batchedLabels[i], nTrainSteps);
 			}
 		}
 
@@ -94,7 +101,9 @@ int main()
 		float* output = nn.output;
 		for (int i = 0; i < nTests; i++)
 		{
-			nn.asynchronousEvaluate(testBatchedPoints[i], nTestSteps);
+			if (synchronizedDescent) nn.synchronousEvaluate(testBatchedPoints[i], nTestSteps);
+			else nn.asynchronousEvaluate(testBatchedPoints[i], nTestSteps);
+			
 			LOG("\n");
 
 

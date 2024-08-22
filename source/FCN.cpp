@@ -26,10 +26,6 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize) :
 	tau = new float* [nLayers];
 
 
-
-#ifdef DYNAMIC_PRECISIONS
-	
-#endif
 	float priorImportance = 1.f;
 
 	for (int i = 0; i < nLayers; i++)
@@ -79,8 +75,9 @@ FCN::FCN(const int _nLayers, int* _sizes, int _datapointSize) :
 			float fb = powf((float)(sizes[i]), .5f);
 			std::fill(bx_precision[i], bx_precision[i] + sizes[i], priorImportance * fb); // TODO thats the prior's strength, give it a good think
 		}
+		
 
-
+		std::fill(tau[i], tau[i] + sizes[i], 1.0f); 
 #ifdef DYNAMIC_PRECISIONS
 
 #else
@@ -115,17 +112,6 @@ FCN::~FCN() {
 		delete[] wx_mean[i];
 		delete[] wx_precision[i];
 
-#ifdef PROSPECTIVE_GRAD
-		delete[] deltaX[i];
-		delete[] F1[i];
-		delete[] F2[i];
-		delete[] F3[i];
-		delete[] deltaMu[i];
-#endif
-
-#ifdef BARYGRAD
-		delete[] deltaX[i];
-#endif
 	}
 }
 
@@ -425,7 +411,7 @@ float FCN::computePerVariateEnergy()
 			
 		}
 
-		float s = sizes[i] * sizes[i + 1];
+		int s = sizes[i] * sizes[i + 1];
 		n += s;
 		for (int j = 0; j < s; j++)
 		{
