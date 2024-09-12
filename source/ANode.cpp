@@ -2,15 +2,16 @@
 
 // Recommended values:
 
-float ANode::xlr = .8f;
+float ANode::xlr = .7f;
 
-float ANode::xReg = .1f;
-float ANode::wReg = .1f;
+float ANode::xReg = .05f;
+float ANode::wReg = .05f;
 
-float ANode::wPriorStrength = .2f;
+float ANode::wPriorStrength = 1.0f;
 
 float ANode::observationImportance = 1.0f;
-float ANode::certaintyDecay = .001f;
+float ANode::certaintyDecay = 1.0f;
+
 
 
 ANode::ANode(int _nChildren, ANode** _children) :
@@ -81,17 +82,13 @@ void ANode::updateActivation()
 		sw2 += w_variates[i] * w_variates[i];
 	}
 
-	float xstar = (mu + swv + .5f * xReg) / (1.f + sw2 + xReg);
-	//float xstar = (mu + swv) / (1.f + sw2);
+	float xstar = (mu + swv) / (1.f + sw2);
 	float clmpxstar = std::clamp(xstar, .0f, 1.f);
 
 	if (xstar != clmpxstar)  // x not in [0, 1], so saturated. As branchless as possible.
 	{
-		/*xstar = (((mu-1.f) * clmpxstar - mu * (1.f- clmpxstar)) > 0.f) ? 
+		xstar = (((mu-1.f) * clmpxstar - mu * (1.f- clmpxstar)) > 0.f) ? 
 			(clmpxstar * xReg + mu)/(1.f + xReg) : 
-			clmpxstar;*/
-		xstar = (((mu - 1.f) * clmpxstar - mu * (1.f - clmpxstar)) > 0.f) ?
-			(.5f * xReg + mu) / (1.f + xReg) :
 			clmpxstar;
 	}
 	x = x * (1.f - xlr) + xstar * xlr;
@@ -117,8 +114,14 @@ void ANode::updateIncomingWeights()
 
 	// b:
 	s1 = 1.0f / b_precision;
-	float lambdab = wReg * epsilon * epsilon; // TODO test different formulas. Change below as well.
+
+	// first and second formulas seem to work better.
+	//float lambdab = wReg * epsilon * epsilon; 
+	float lambdab = wReg * epsilon * epsilon * 1.0f * 1.0f; //  (1.0f = parent->fx)
+	//float lambdab = wReg; 
+
 	s2 = b_mean + s1 * lambdab;
+
 	// ws:
 	for (int i = 0; i < nParents; i++) 
 	{
@@ -127,34 +130,29 @@ void ANode::updateIncomingWeights()
 
 		s1 += fi * fi_div_twi;
 
-		//float lambdai = wReg * ?; // TODO test different formulas. Change above and below as well.
-		float lambdai = wReg * epsilon * epsilon * fi * fi; 
+		float lambdai = wReg * epsilon * epsilon * fi * fi;
 
 		s2 += fi * parents[i]->w_means[inParentsListIDs[i]] + lambdai * fi_div_twi;
 	}
 
-	// not directly epsilon because it is used to recompute the lambda terms. Necessary ?
-	float fcom = (x - s2) / (1.f + s1);
-
+	
+	epsilon = (x - s2) / (1.f + s1);
+	mu = x - epsilon;
 
 	// b:
-	b_variate = b_mean + (fcom + lambdab) / b_precision;
+	b_variate = b_mean + (epsilon + lambdab) / b_precision;
 
 	// ws:
 	for (int i = 0; i < nParents; i++)
 	{
 		float fi = parents[i]->fx;
 
-		//float lambdai = wReg * ?; // TODO test different formulas. Change above as well.
+		// to be rigorous, should use the value of epsilon before the update, but same results so ...
 		float lambdai = wReg * epsilon * epsilon * fi * fi;
 
 		parents[i]->w_variates[inParentsListIDs[i]] = parents[i]->w_means[inParentsListIDs[i]] +
-			(fi * fcom + lambdai) / parents[i]->w_precisions[inParentsListIDs[i]];
+			(fi * epsilon + lambdai) / parents[i]->w_precisions[inParentsListIDs[i]];
 	}
-
-	epsilon = fcom;
-	mu = x - epsilon;
-
 }
 
 
@@ -164,21 +162,20 @@ void ANode::calcifyIncomingWeights()
 	{ 
 		float epsw = parents[k]->w_variates[inParentsListIDs[k]] - parents[k]->w_means[inParentsListIDs[k]];
 		float precw = parents[k]->w_precisions[inParentsListIDs[k]];
-		float fxk2 = parents[k]->fx * parents[k]->fx;
+		float fxk2 = parents[k]->fx * parents[k]->fx; // measured positive impact.
 
-		//float exponent = -certaintyDecay * powf(epsw, 2.0f) * precw;
-		float exponent = -certaintyDecay * abs(epsw) * sqrtf(precw);
+		float decay = std::max(expf( - certaintyDecay * powf(epsw, 2.0f) * precw), .8f);
+		//float decay = std::max(expf( - certaintyDecay * abs(epsw) * sqrtf(precw)), .8f);
 		
-		// TODO observationImportance ? observationImportance * fxk2 ? fxk = 1 for the bias
-		parents[k]->w_precisions[inParentsListIDs[k]] = (precw + observationImportance * fxk2) * expf(exponent);
+		parents[k]->w_precisions[inParentsListIDs[k]] = precw * decay + observationImportance * fxk2;
 
 		parents[k]->w_means[inParentsListIDs[k]] = parents[k]->w_variates[inParentsListIDs[k]];
 	}
 
-	//float exponent = -certaintyDecay * powf(b_variate - b_mean, 2.0f) * b_precision;
-	float exponent = -certaintyDecay * abs(b_variate - b_mean) * sqrtf(b_precision);
-	
-	b_precision = (b_precision + observationImportance) * expf(exponent);
+	float decay = std::max(expf(-certaintyDecay * powf(b_variate - b_mean, 2.0f) * b_precision), .8f);
+	//float decay = std::max(expf(-certaintyDecay * abs(b_variate - b_mean) * sqrtf(b_precision)), .8f);
+
+	b_precision = b_precision * decay + observationImportance;
 
 	b_mean = b_variate;
 }

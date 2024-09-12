@@ -37,15 +37,15 @@ int main()
 		ANode::xlr = .7f;
 
 		ANode::xReg = .05f;
-		ANode::wReg = .0f;
+		ANode::wReg = .05f;
 
-		ANode::wPriorStrength = 1.f;
+		ANode::wPriorStrength = 1.0f;
 
 		ANode::observationImportance = 1.0f;
-		ANode::certaintyDecay = 1.f;
+		ANode::certaintyDecay = 1.0f;
 
 
-		int nTrainSteps = 3; 
+		int nTrainSteps = 2; 
 		int nTestSteps = 4;
 
 		constexpr bool dynamicTopology = false;
@@ -72,19 +72,19 @@ int main()
 		bool onePerClass = true;
 		onePerClass = false;
 		if (onePerClass) {
-			for (int u = 0; u < 3; u++) {
+			for (int u = 0; u < 1; u++) {
 				for (int i = 0; i < 10; i++) {
 					int id = 0;
 					while (batchedLabels[id][i] != 1.0f) {
 						id++;
 					}
-					nn.learn(batchedPoints[id], batchedLabels[id], 10);
+					nn.learn(batchedPoints[id], batchedLabels[id], nTrainSteps);
 				}
 				LOG("LOOP " << u << " done.\n\n")
 			}
 		}
 		else {
-			for (int i = 0; i < 50; i++)
+			for (int i = 0; i < 500; i++)
 			{
 				nn.learn(batchedPoints[i], batchedLabels[i], nTrainSteps);
 			}
