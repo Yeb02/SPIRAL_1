@@ -24,7 +24,7 @@ Node::Node(int _nChildren, Node** _children) :
 	children = new Node*[nChildren];
 	std::copy(_children, _children + nChildren, children);
 
-	bx_mean = NORMAL_01 * .01f;
+	bx_mean = NORMAL_01 * .05f;
 	bx_precision = wxPriorStrength;
 	bx_variate = bx_mean;
 
@@ -33,15 +33,15 @@ Node::Node(int _nChildren, Node** _children) :
 	wx_variates = new float[nChildren];
 
 	std::fill(wx_precisions, wx_precisions + nChildren, wxPriorStrength);
-	for (int i = 0; i < nChildren; i++) wx_means[i] = NORMAL_01 * .01f;
+	for (int i = 0; i < nChildren; i++) wx_means[i] = NORMAL_01 * .05f;
 	std::copy(wx_means, wx_means + nChildren, wx_variates);
 
-	x = NORMAL_01 * .01f;
+	x = NORMAL_01 * .05f;
 	fx = tanhf(x);
 
 #ifdef DYNAMIC_PRECISIONS
 
-	bt_mean = NORMAL_01 * .01f;
+	bt_mean = NORMAL_01 * .001f;
 	bt_precision = wtPriorStrength;
 	bt_variate = bt_mean;
 
@@ -50,7 +50,7 @@ Node::Node(int _nChildren, Node** _children) :
 	wt_variates = new float[nChildren];
 
 	std::fill(wt_precisions, wt_precisions + nChildren, wtPriorStrength);
-	for (int i = 0; i < nChildren; i++) wt_means[i] = NORMAL_01 * .01f;
+	for (int i = 0; i < nChildren; i++) wt_means[i] = NORMAL_01 * .001f;
 	std::copy(wt_means, wt_means + nChildren, wt_variates);
 
 #else

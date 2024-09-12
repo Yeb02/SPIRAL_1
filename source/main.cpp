@@ -1,5 +1,6 @@
 #include "FCN.h"
 #include "Network.h"
+#include "ANetwork.h"
 #include "MNIST.h"
 
 
@@ -27,10 +28,91 @@ int main()
 
 
 
-
-	bool testNetworkClass = true;
+	bool testANetworkClass = true;
+	bool testNetworkClass = false;
 	
-	if (testNetworkClass)
+	if (testANetworkClass)
+	{
+
+		ANode::xlr = .8f;
+
+		ANode::xReg = .1f;
+		ANode::wReg = .1f;
+
+		ANode::wPriorStrength = .2f;
+
+		ANode::observationImportance = 1.0f;
+		ANode::certaintyDecay = .001f;
+
+
+		int nTrainSteps = 4; 
+		int nTestSteps = 4;
+
+		constexpr bool dynamicTopology = false;
+
+		// C++ is really stupid sometimes
+		const int _nLayers = 4;
+		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 15, 10, 0 };
+		/*const int _nLayers = 2;
+		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 10, 0 };*/
+
+
+		int nLayers = _nLayers;
+		int* sizes = &(_sizes[1]);
+
+		if (dynamicTopology)
+		{
+			nLayers = 0;
+			sizes = nullptr;
+		}
+
+		ANetwork nn(datapointS, labelS, nLayers, sizes);
+
+
+		bool onePerClass = true;
+		onePerClass = false;
+		if (onePerClass) {
+			for (int u = 0; u < 3; u++) {
+				for (int i = 0; i < 10; i++) {
+					int id = 0;
+					while (batchedLabels[id][i] != 1.0f) {
+						id++;
+					}
+					nn.learn(batchedPoints[id], batchedLabels[id], 10);
+				}
+				LOG("LOOP " << u << " done.\n\n")
+			}
+		}
+		else {
+			for (int i = 0; i < 500; i++)
+			{
+				nn.learn(batchedPoints[i], batchedLabels[i], nTrainSteps);
+			}
+		}
+
+
+		int nTests = 1000;
+		int nCorrects = 0;
+		float* output = nn.output;
+		for (int i = 0; i < nTests; i++)
+		{
+			nn.evaluate(testBatchedPoints[i], nTestSteps);
+
+			LOG("\n");
+
+
+			float MSE_loss = .0f;
+			for (int j = 0; j < labelS; j++)
+			{
+				MSE_loss += powf(output[j] - testBatchedLabels[i][j], 2.0f);
+			}
+			int isCorrect = isCorrectAnswer(output, testBatchedLabels[i]);
+			LOGL(isCorrect << " " << MSE_loss << "\n");
+			nCorrects += isCorrect;
+		}
+		LOGL("\n" << (float)nCorrects / (float)nTests);
+	}
+	else if (testNetworkClass)
 	{
 
 		Node::xlr = .8f;
@@ -44,10 +126,10 @@ int main()
 
 		Node::xReg = .1f;
 		Node::wxReg = .0f;
-		Node::wtReg = .0f;
+		Node::wtReg = .3f;
 
-		int nTrainSteps = 3; // Suprisingly, less steps leads to much better results. More step require lower wxlr.
-		int nTestSteps = 5;
+		int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More step require lower wxlr.
+		int nTestSteps = 4;
 		
 		constexpr bool dynamicTopology = false;
 		constexpr bool synchronizedDescent = false;

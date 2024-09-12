@@ -19,6 +19,8 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="source\ANetwork.cpp" />
+    <ClCompile Include="source\ANode.cpp" />
     <ClCompile Include="source\FCN.cpp" />
     <ClCompile Include="source\main.cpp" />
     <ClCompile Include="source\Network.cpp" />
@@ -26,6 +28,8 @@
     <ClCompile Include="source\Random.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="source\ANetwork.h" />
+    <ClInclude Include="source\ANode.h" />
     <ClInclude Include="source\config.h" />
     <ClInclude Include="source\FCN.h" />
     <ClInclude Include="source\MNIST.h" />
