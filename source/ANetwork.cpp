@@ -60,10 +60,6 @@ ANetwork::ANetwork(int _datapointSize, int _labelSize, int nLayers, int* sizes) 
 	{
 		nodes[i]->transmitPredictions();
 	}
-	for (int i = 0; i < nodes.size(); i++)
-	{
-		nodes[i]->computeLocalQuantities();
-	}
 }
 
 
@@ -90,34 +86,46 @@ void ANetwork::learn(float* _datapoint, float* _label, int nSteps)
 	for (int i = 0; i < nodes.size() - nClamped; i++) permutation[i] = i + nClamped;
 
 	float previousEnergy = computeTotalActivationEnergy();
-	for (int s = 0; s < nSteps; s++) 
+	for (int s = 0; s < nSteps; s++)
 	{
-		LOG(previousEnergy);
-
-		if (randomOrder) {
-			
-			std::shuffle(permutation.begin(), permutation.end(), generator);
-			for (int i = 0; i < nodes.size() - nClamped; i++)
-			{
-				nodes[permutation[i]]->updateActivation();
-			}
-		} else 
+		for (int s = 0; s < nSteps; s++)
 		{
-			for (int i = nClamped; i < nodes.size(); i++)
-			{
-				nodes[i]->updateActivation();
+			LOG(previousEnergy);
+
+			if (randomOrder) {
+
+				std::shuffle(permutation.begin(), permutation.end(), generator);
+				for (int i = 0; i < nodes.size() - nClamped; i++)
+				{
+					nodes[permutation[i]]->updateActivation();
+				}
 			}
+			else
+			{
+				for (int i = nClamped; i < nodes.size(); i++)
+				{
+					nodes[i]->updateActivation();
+				}
+			}
+
+
+			float currentEnergy = computeTotalActivationEnergy();
+			previousEnergy = currentEnergy;
 		}
 
-
-		float currentEnergy = computeTotalActivationEnergy();
-		previousEnergy = currentEnergy;
+		LOG(previousEnergy);
+		LOG(" WBU ")
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->updateIncomingWeights();
+		}
+		previousEnergy = computeTotalActivationEnergy();
+		
 	}
 	LOG(previousEnergy << "\n\n");
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		nodes[i]->updateIncomingWeights();
 		nodes[i]->calcifyIncomingWeights();
 	}
 }
@@ -140,6 +148,9 @@ void ANetwork::evaluate(float* _datapoint, int nSteps)
 			std::shuffle(permutation.begin(), permutation.end(), generator);
 			for (int i = 0; i < nodes.size() - nClamped; i++)
 			{
+				if (permutation[i] < 794) {
+					int a = 1.f;
+				}
 				nodes[permutation[i]]->updateActivation();
 			}
 		}
@@ -156,6 +167,11 @@ void ANetwork::evaluate(float* _datapoint, int nSteps)
 		previousEnergy = currentEnergy;
 	}
 	LOG(previousEnergy << "\n\n");
+
+	for (int i = 0; i < labelSize; i++)
+	{
+		output[i] = nodes[datapointSize + i]->x;
+	}
 }
 
 

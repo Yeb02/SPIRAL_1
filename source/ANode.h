@@ -79,12 +79,7 @@ public:
 	// intitializes the predicted activation mu with the bias
 	void prepareToReceivePredictions();
 
-	// sends relevant information to the children for their mu and tau
+	// sends relevant information to the children for their mu
 	void transmitPredictions();
-
-	// Sets all values depending directly or not on the raw predictions that the parent sent:
-	// (only epsilon as of yet)
-	void computeLocalQuantities();
-
 
 };

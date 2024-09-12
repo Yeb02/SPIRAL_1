@@ -34,27 +34,27 @@ int main()
 	if (testANetworkClass)
 	{
 
-		ANode::xlr = .8f;
+		ANode::xlr = .7f;
 
-		ANode::xReg = .1f;
-		ANode::wReg = .1f;
+		ANode::xReg = .05f;
+		ANode::wReg = .0f;
 
-		ANode::wPriorStrength = .2f;
+		ANode::wPriorStrength = 1.f;
 
 		ANode::observationImportance = 1.0f;
-		ANode::certaintyDecay = .001f;
+		ANode::certaintyDecay = 1.f;
 
 
-		int nTrainSteps = 4; 
+		int nTrainSteps = 3; 
 		int nTestSteps = 4;
 
 		constexpr bool dynamicTopology = false;
 
 		// C++ is really stupid sometimes
-		const int _nLayers = 4;
-		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 15, 10, 0 };
-		/*const int _nLayers = 2;
-		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 10, 0 };*/
+		/*const int _nLayers = 4;
+		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 15, 10, 0 };*/
+		const int _nLayers = 2;
+		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 10, 0 };
 
 
 		int nLayers = _nLayers;
@@ -84,7 +84,7 @@ int main()
 			}
 		}
 		else {
-			for (int i = 0; i < 500; i++)
+			for (int i = 0; i < 50; i++)
 			{
 				nn.learn(batchedPoints[i], batchedLabels[i], nTrainSteps);
 			}

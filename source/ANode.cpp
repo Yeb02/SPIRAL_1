@@ -40,9 +40,7 @@ ANode::ANode(int _nChildren, ANode** _children) :
 	x = NORMAL_01 * .05f;
 	fx = std::clamp(x, .0f, 1.f);
 
-	prepareToReceivePredictions();
 	transmitPredictions();
-	computeLocalQuantities();
 }
 
 ANode::~ANode()
@@ -83,12 +81,17 @@ void ANode::updateActivation()
 		sw2 += w_variates[i] * w_variates[i];
 	}
 
-	float xstar = (mu + swv) / (1.f + sw2);
+	float xstar = (mu + swv + .5f * xReg) / (1.f + sw2 + xReg);
+	//float xstar = (mu + swv) / (1.f + sw2);
 	float clmpxstar = std::clamp(xstar, .0f, 1.f);
 
-	if (xstar != clmpxstar) { // x not in [0, 1], so saturated. As branchless as possible.
-		xstar = (((mu-1.f) * clmpxstar - mu * (1.f- clmpxstar)) > 0.f) ? 
+	if (xstar != clmpxstar)  // x not in [0, 1], so saturated. As branchless as possible.
+	{
+		/*xstar = (((mu-1.f) * clmpxstar - mu * (1.f- clmpxstar)) > 0.f) ? 
 			(clmpxstar * xReg + mu)/(1.f + xReg) : 
+			clmpxstar;*/
+		xstar = (((mu - 1.f) * clmpxstar - mu * (1.f - clmpxstar)) > 0.f) ?
+			(.5f * xReg + mu) / (1.f + xReg) :
 			clmpxstar;
 	}
 	x = x * (1.f - xlr) + xstar * xlr;
@@ -157,22 +160,28 @@ void ANode::updateIncomingWeights()
 
 void ANode::calcifyIncomingWeights() 
 {
-	for (int k = 0; k < nChildren; k++)
+	for (int k = 0; k < nParents; k++)
 	{ 
-		float exponent = -certaintyDecay * powf(w_variates[k] - w_means[k], 2.0f) * w_precisions[k];
-		// TODO observationImportance ? observationImportance * fx * fx ?
-		w_precisions[k] = (w_precisions[k] + observationImportance) * expf(exponent);
+		float epsw = parents[k]->w_variates[inParentsListIDs[k]] - parents[k]->w_means[inParentsListIDs[k]];
+		float precw = parents[k]->w_precisions[inParentsListIDs[k]];
+		float fxk2 = parents[k]->fx * parents[k]->fx;
 
-		w_means[k] = w_variates[k];
+		//float exponent = -certaintyDecay * powf(epsw, 2.0f) * precw;
+		float exponent = -certaintyDecay * abs(epsw) * sqrtf(precw);
+		
+		// TODO observationImportance ? observationImportance * fxk2 ? fxk = 1 for the bias
+		parents[k]->w_precisions[inParentsListIDs[k]] = (precw + observationImportance * fxk2) * expf(exponent);
+
+		parents[k]->w_means[inParentsListIDs[k]] = parents[k]->w_variates[inParentsListIDs[k]];
 	}
 
-	float exponent = -certaintyDecay * powf(b_variate - b_mean, 2.0f) * b_precision;
-	// TODO observationImportance ? observationImportance * fx * fx ?
+	//float exponent = -certaintyDecay * powf(b_variate - b_mean, 2.0f) * b_precision;
+	float exponent = -certaintyDecay * abs(b_variate - b_mean) * sqrtf(b_precision);
+	
 	b_precision = (b_precision + observationImportance) * expf(exponent);
 
 	b_mean = b_variate;
 }
-
 
 
 
@@ -191,8 +200,6 @@ void ANode::setActivation(float newX)
 	}
 }
 
-
-
 void ANode::prepareToReceivePredictions()
 {
 	mu = b_variate;
@@ -203,10 +210,6 @@ void ANode::transmitPredictions()
 	for (int k = 0; k < nChildren; k++)
 	{
 		children[k]->mu += fx * w_variates[k];
+		children[k]->epsilon -= fx * w_variates[k];
 	}
-}
-
-void ANode::computeLocalQuantities() 
-{
-	epsilon = x - mu;
 }
