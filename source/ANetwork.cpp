@@ -148,9 +148,6 @@ void ANetwork::evaluate(float* _datapoint, int nSteps)
 			std::shuffle(permutation.begin(), permutation.end(), generator);
 			for (int i = 0; i < nodes.size() - nClamped; i++)
 			{
-				if (permutation[i] < 794) {
-					int a = 1.f;
-				}
 				nodes[permutation[i]]->updateActivation();
 			}
 		}

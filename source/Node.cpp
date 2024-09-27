@@ -2,18 +2,22 @@
 
 // Recommended values:
 
-float Node::xlr = 1.f;
+float Node::xlr = .8f;
 float Node::wxlr = .1f;
 float Node::wtlr = .1f;
 
 float Node::wxPriorStrength = .2f;
 float Node::wtPriorStrength = .2f;
+
 float Node::observationImportance = 1.0f;
-float Node::certaintyDecay = .95f;
+float Node::certaintyDecay = 1.0f;
+float Node::certaintyLimit = 100.0f;
 
 float Node::xReg = .01f;
 float Node::wxReg = .01f;
 float Node::wtReg = .01f;
+float Node::btReg = .2f;
+
 
 
 Node::Node(int _nChildren, Node** _children) :
@@ -24,7 +28,7 @@ Node::Node(int _nChildren, Node** _children) :
 	children = new Node*[nChildren];
 	std::copy(_children, _children + nChildren, children);
 
-	bx_mean = NORMAL_01 * .05f;
+	bx_mean = NORMAL_01 * .2f;
 	bx_precision = wxPriorStrength;
 	bx_variate = bx_mean;
 
@@ -33,15 +37,23 @@ Node::Node(int _nChildren, Node** _children) :
 	wx_variates = new float[nChildren];
 
 	std::fill(wx_precisions, wx_precisions + nChildren, wxPriorStrength);
-	for (int i = 0; i < nChildren; i++) wx_means[i] = NORMAL_01 * .05f;
+	for (int i = 0; i < nChildren; i++) wx_means[i] = NORMAL_01 * .2f;
 	std::copy(wx_means, wx_means + nChildren, wx_variates);
 
-	x = NORMAL_01 * .05f;
-	fx = tanhf(x);
+	mu = bx_mean;
+	x = NORMAL_01 * .2f;
+	fx = F(x);
+
+
+	accumulatedEnergy = .0f;
+	bx_energy = 0.f;
+	wx_energies = new float[nChildren];
+	std::fill(wx_energies, wx_energies + nChildren, .0f);
+	resetFlag = 1.f;
 
 #ifdef DYNAMIC_PRECISIONS
 
-	bt_mean = NORMAL_01 * .001f;
+	bt_mean = .5f + NORMAL_01 * .1f; // -1 because typical values are in [-1, 1], so N(0, tau=exp(.5)) is better than N(0, 1)
 	bt_precision = wtPriorStrength;
 	bt_variate = bt_mean;
 
@@ -50,15 +62,14 @@ Node::Node(int _nChildren, Node** _children) :
 	wt_variates = new float[nChildren];
 
 	std::fill(wt_precisions, wt_precisions + nChildren, wtPriorStrength);
-	for (int i = 0; i < nChildren; i++) wt_means[i] = NORMAL_01 * .001f;
+	for (int i = 0; i < nChildren; i++) wt_means[i] = NORMAL_01 * .025f;
 	std::copy(wt_means, wt_means + nChildren, wt_variates);
+	t = bt_mean;
 
 #else
 	tau = 1.0f;
 #endif
 
-	prepareToReceivePredictions();
-	transmitPredictions();
 	computeLocalQuantities();
 }
 
@@ -77,551 +88,179 @@ Node::~Node()
 #endif
 }
 
+#ifdef DYNAMIC_PRECISIONS
+const float eta = .0f;
+#endif 
 
-// Dont forget to change the other 2 functions below when touching this one !
-void Node::asynchronousGradientStep()
+void Node::XGradientStep()
 {
-	//Everything up to date initially
+	float grad = epsilon * tau + x * xReg;
+	float fprime = 2.f - .5f * powf(fx - 1.f, 2.f);
+	float grad_acc = .0f;
+
+	float H = tau + xReg;
+
+	for (int k = 0; k < nChildren; k++)
+	{
+		Node& c = *children[k];
+
+#ifdef DYNAMIC_PRECISIONS
+		grad_acc += c.tau * c.epsilon * (- wx_variates[k] + wt_variates[k] * c.epsilon) - wt_variates[k];
+		
+		grad_acc += eta * wt_variates[k] * c.tau;
+#else
+		grad_acc -= c.tau * c.epsilon * wx_variates[k];
+#endif
+
+
+		float fpw = wx_variates[k] * fprime;
+		float hk = c.tau * fpw * (fpw + c.epsilon * (fx-1.f));
+#ifdef NO_SECOND_ORDER
+		// no operation needed
+#elif defined SECOND_ORDER_TAU
+		// no operation needed
+#elif defined SECOND_ORDER_MAX
+		H = std::max(H, abs(hk));
+#elif defined SECOND_ORDER_L1
+		H += abs(hk);
+#endif
+	}
+	grad += fprime * grad_acc;
+
+#ifdef NO_SECOND_ORDER
+	H = 1.f;
+#endif
+
+	x -= xlr * grad / H;
+	epsilon = x - mu;
+
+	float deltaFX = F(x) - fx;
+	fx += deltaFX;
+
+#ifdef ASYNCHRONOUS_UPDATES
+	for (int k = 0; k < nChildren; k++)
+	{
+		Node& c = *children[k];
+
+		c.mu += deltaFX * wx_variates[k];
+		c.epsilon = c.x - c.mu;
+
+#ifdef DYNAMIC_PRECISIONS
+		c.t += deltaFX * wt_variates[k];
+		c.tau = expf(c.t);
+#endif
+	}
+#endif 
+}
+
+void Node::WBGradientStep()
+{
+	float Hbx = tau + bx_precision;	
+	float gradbx = bx_precision * (bx_variate - bx_mean) - epsilon * tau;
+	float deltaBx = - wxlr * gradbx / Hbx;
+
+	bx_variate += deltaBx;
+	mu += deltaBx;
+	epsilon = x - mu;
 	
 
+#ifdef DYNAMIC_PRECISIONS
+	float te2 = .5f * epsilon * epsilon * tau;
+	float Hbt = btReg * REGBT + te2 + bt_precision;
+	Hbt += eta * tau;
+	float gradbt = btReg * REGBT * (bt_variate-.5f)
+		+ bt_precision * (bt_variate - bt_mean) + te2 - 1.f;
+	gradbt += eta * tau;
+	float deltaBT = -wtlr * gradbt / Hbt;
+
+	bt_variate += deltaBT;
+	t += deltaBT;
+	tau = expf(t);
+#endif
 	
+	for (int k = 0; k < nChildren; k++)
 	{
-		float grad = -epsilon * tau;
-		float fprime = 1.0f - powf(fx, 2.f);
-		float grad_acc = .0f;
-
-		float H = tau;
-
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-			grad_acc += c.epsilon * c.tau * wx_variates[k];
-
+		Node& c = *children[k];
 
 #ifdef DYNAMIC_PRECISIONS
-			grad_acc += wt_variates[k] * (c.e - 1.f);
+		float te2k = .5f * c.epsilon * c.epsilon * c.tau;
+		float Hwtk = wtReg * REGWT
+			+ wx_precisions[k] + te2k * fx * fx;	
+		Hwtk += eta * c.tau * fx * fx;
+		float gradwtk = wtReg * wt_variates[k] * REGWT
+			+ wx_precisions[k] * (wt_variates[k] - wt_means[k]) + te2k * fx * fx - fx;
+		gradwtk += eta * c.tau * fx;
+		float deltaWtk = - wtlr * gradwtk / Hwtk;
+		wt_variates[k] += deltaWtk;
+#ifdef ASYNCHRONOUS_UPDATES
+		c.t += fx * deltaWtk;
+		c.tau = expf(c.t);
+#endif
 #endif
 
 
-			float fpw = wx_variates[k] * fprime;
-
-#ifdef NO_SECOND_ORDER
-			//
-#elif defined SECOND_ORDER_TAU
-			//
-#elif defined SECOND_ORDER_MAX
-			H = std::max(H, abs(c.tau * fpw));
-#elif defined SECOND_ORDER_L1
-			H += abs(c.tau * fpw * (c.epsilon * fx + fpw));
-#elif defined SECOND_ORDER_EXACT
-			H += c.tau * fpw * (c.epsilon * fx + fpw);
+		float Hwxk = wxReg * REGWX
+			+ wx_precisions[k] + c.tau * fx * fx;
+		float gradwxk = wxReg * wx_variates[k] * REGWX
+			+ wx_precisions[k] * (wx_variates[k] - wx_means[k]) - c.tau * c.epsilon * fx;
+		float deltaWxk = - wxlr * gradwxk / Hwxk;
+		wx_variates[k] += deltaWxk;
+#ifdef ASYNCHRONOUS_UPDATES
+		c.mu += fx * deltaWxk;
+		c.epsilon = c.x - c.mu;
 #endif
-		}
-		grad += fprime * grad_acc;
-
-#ifdef NO_SECOND_ORDER
-		H = 1.f;
-#endif
-
-		float deltaX = xlr * grad / H;
-#ifdef SECOND_ORDER_EXACT
-		deltaX = std::clamp(xlr * grad / H, -1.f, 1.f);
-#endif
-
-
-		deltaX *= 1.0f - ((x * deltaX) > 0.f) * xReg;
-		x += deltaX;
-
 	}
-	// X changed
-	// epsilon, fx, e not up to date
-
-
-	{
-		epsilon = x - mu;
-
-		float Hbx = tau + bx_precision;	// L1, not the real H
-		float deltaBX = wxlr * (epsilon * tau + bx_precision * (bx_mean - bx_variate)) / Hbx;
-		bx_variate += deltaBX;
-		mu += deltaBX;
-		epsilon = x - mu;
-	}
-	// BX changed
-	// fx, e not up to date
-
-
-#ifdef DYNAMIC_PRECISIONS
-	{
-		e = .5f * epsilon * epsilon * tau;
-
-		float Hbt = e + bt_precision;	// L1, not the real H
-		float deltaBT = wtlr * (1.f - e + bx_precision * (bt_mean - bt_variate)) / Hbt;
-
-		bt_variate += deltaBT;
-		t += deltaBT;
-		tau = expf(t);
-	}
-	// BT changed
-	// fx, e not up to date
-#endif
-
-
-
-	{
-#ifdef DYNAMIC_PRECISIONS
-		e = .5f * epsilon * epsilon * tau;
-#endif
-
-		float deltaFX = tanhf(x) - fx;
-		fx += deltaFX;
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-
-			
-			c.mu += deltaFX * wx_variates[k];
-			c.epsilon = c.x - c.mu;
-
-
-#ifdef DYNAMIC_PRECISIONS
-			c.t += deltaFX * wt_variates[k];
-			c.tau = expf(c.t);
-			c.e = .5f * c.epsilon * c.epsilon * c.tau;
-
-			float Hwt = c.e * fx * fx + wx_precisions[k];	// L1 is also the real H (E is convex in wt)
-			float deltaWt = wtlr * ((1.f - c.e) * fx + wt_precisions[k] * (wt_means[k] - wt_variates[k])) / Hwt; 
-			deltaWt *= 1.0f - ((wt_variates[k] * deltaWt) > 0.f) * wtReg;
-
-			wt_variates[k] += deltaWt;
-			c.t += fx * deltaWt;
-			c.tau = expf(c.t);
-#endif
-
-
-
-			float Hwx = c.tau * fx * fx + wx_precisions[k];	// L1, not the real H
-			float deltaWx = wxlr * (c.epsilon * c.tau * fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hwx;
-			deltaWx *= 1.0f - ((wx_variates[k] * deltaWx) > 0.f) * wxReg;
-
-			wx_variates[k] += deltaWx;
-			c.mu += fx * deltaWx;
-			c.epsilon = c.x - c.mu;
-
-#ifdef DYNAMIC_PRECISIONS
-			c.e = .5f * c.epsilon * c.epsilon * c.tau;
-#endif
-		}
-	}
-	// All local quantities up to date
-	// Children mu and t updated
-	// All children's quantities up to date
-	
 }
 
-void Node::asynchronousGradientStep_X_only()
-{
-	//Everything up to date initially
-
-
-
-	{
-		float grad = -epsilon * tau;
-		float fprime = 1.0f - powf(fx, 2.f);
-		float grad_acc = .0f;
-
-		float H = tau;
-
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-			grad_acc += c.epsilon * c.tau * wx_variates[k];
-
-
-#ifdef DYNAMIC_PRECISIONS
-			grad_acc += wt_variates[k] * (c.e - 1.f);
-#endif
-
-
-			float fpw = wx_variates[k] * fprime;
-
-#ifdef NO_SECOND_ORDER
-			//
-#elif defined SECOND_ORDER_TAU
-			//
-#elif defined SECOND_ORDER_MAX
-			H = std::max(H, abs(c.tau * fpw));
-#elif defined SECOND_ORDER_L1
-			H += abs(c.tau * fpw * (c.epsilon * fx + fpw));
-#elif defined SECOND_ORDER_EXACT
-			H += c.tau * fpw * (c.epsilon * fx + fpw);
-#endif
-		}
-		grad += fprime * grad_acc;
-
-#ifdef NO_SECOND_ORDER
-		H = 1.f;
-#endif
-
-		float deltaX = xlr * grad / H;
-#ifdef SECOND_ORDER_EXACT
-		deltaX = std::clamp(xlr * grad / H, -1.f, 1.f);
-#endif
-
-
-		deltaX *= 1.0f - ((x * deltaX) > 0.f) * xReg;
-		x += deltaX;
-		epsilon = x - mu;
-#ifdef DYNAMIC_PRECISIONS
-		e = .5f * epsilon * epsilon * tau;
-#endif
-	}
-	// X changed
-	// fx not up to date
-
-
-	{
-
-		float deltaFX = tanhf(x) - fx;
-		fx += deltaFX;
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-
-			c.mu += deltaFX * wx_variates[k];
-			c.epsilon = c.x - c.mu;
-
-#ifdef DYNAMIC_PRECISIONS
-			c.t += deltaFX * wt_variates[k];
-			c.tau = expf(c.t);
-			c.e = .5f * c.epsilon * c.epsilon * c.tau;
-#endif
-		}
-	}
-	// All local quantities up to date
-	// Children mu and t updated
-	// All children's quantities up to date
-
-}
-
-void Node::asynchronousGradientStep_WB_only()
-{
-	//Everything up to date initially
-
-
-	{
-		float Hbx = tau + bx_precision;	// L1, not the real H
-		float deltaBX = wxlr * (epsilon * tau + bx_precision * (bx_mean - bx_variate)) / Hbx;
-		bx_variate += deltaBX;
-		mu += deltaBX;
-		epsilon = x - mu;
-	}
-	// BX changed
-	// e not up to date
-
-
-#ifdef DYNAMIC_PRECISIONS
-	{
-		e = .5f * epsilon * epsilon * tau;
-
-		float Hbt = e + bt_precision;	// L1, not the real H
-		float deltaBT = wtlr * (1.f - e + bx_precision * (bt_mean - bt_variate)) / Hbt;
-
-		bt_variate += deltaBT;
-		t += deltaBT;
-		tau = expf(t);
-		e = .5f * epsilon * epsilon * tau;
-	}
-	// BT changed
-	// Everything up to date
-#endif
-
-
-
-	{
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-
-
-#ifdef DYNAMIC_PRECISIONS
-			float Hwt = c.e * fx * fx + wx_precisions[k];	// L1 is also the real H (E is convex in wt)
-			float deltaWt = wtlr * ((1.f - c.e) * fx + wt_precisions[k] * (wt_means[k] - wt_variates[k])) / Hwt;
-			deltaWt *= 1.0f - ((wt_variates[k] * deltaWt) > 0.f) * wtReg;
-
-			wt_variates[k] += deltaWt;
-			c.t += fx * deltaWt;
-			c.tau = expf(c.t);
-#endif
-
-
-
-			float Hwx = c.tau * fx * fx + wx_precisions[k];	// L1, not the real H
-			float deltaWx = wxlr * (c.epsilon * c.tau * fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hwx;
-			deltaWx *= 1.0f - ((wx_variates[k] * deltaWx) > 0.f) * wxReg;
-
-			wx_variates[k] += deltaWx;
-			c.mu += fx * deltaWx;
-			c.epsilon = c.x - c.mu;
-
-#ifdef DYNAMIC_PRECISIONS
-			c.e = .5f * c.epsilon * c.epsilon * c.tau;
-#endif
-		}
-	}
-	// All local quantities up to date
-	// Children mu and t updated
-	// All children's quantities up to date
-
-}
-
-
-// Dont forget to change the other 2 functions below when touching this one !
-void Node::synchronousGradientStep()
-{
-	//Everything up to date initially
-
-
-
-	{
-		float grad = -epsilon * tau;
-		float fprime = 1.0f - powf(fx, 2.f);
-		float grad_acc = .0f;
-
-		float H = tau;
-
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-			grad_acc += c.epsilon * c.tau * wx_variates[k];
-
-
-#ifdef DYNAMIC_PRECISIONS
-			grad_acc += wt_variates[k] * (c.e - 1.f);
-#endif
-
-
-			float fpw = wx_variates[k] * fprime;
-
-#ifdef NO_SECOND_ORDER
-			//
-#elif defined SECOND_ORDER_TAU
-			//
-#elif defined SECOND_ORDER_MAX
-			H = std::max(H, abs(c.tau * fpw));
-#elif defined SECOND_ORDER_L1
-			H += abs(c.tau * fpw * (c.epsilon * fx + fpw));
-#elif defined SECOND_ORDER_EXACT
-			H += c.tau * fpw * (c.epsilon * fx + fpw);
-#endif
-		}
-		grad += fprime * grad_acc;
-
-#ifdef NO_SECOND_ORDER
-		H = 1.f;
-#endif
-
-		float deltaX = xlr * grad / H;
-#ifdef SECOND_ORDER_EXACT
-		deltaX = std::clamp(xlr * grad / H, -1.f, 1.f);
-#endif
-
-
-		deltaX *= 1.0f - ((x * deltaX) > 0.f) * xReg;
-		x += deltaX;
-
-	}
-	// X changed
-	// epsilon, fx, e not up to date
-
-	{
-		epsilon = x - mu;
-		float Hbx = tau + bx_precision;	// L1, not the real H
-		float deltaBX = wxlr * (epsilon * tau + bx_precision * (bx_mean - bx_variate)) / Hbx;
-		bx_variate += deltaBX;
-		mu += deltaBX;
-		epsilon = x - mu;
-	}
-	// BX changed
-	// fx, e not up to date
-
-
-#ifdef DYNAMIC_PRECISIONS
-	{
-		e = .5f * epsilon * epsilon * tau;
-
-		float Hbt = e + bt_precision;	// L1, not the real H
-		float deltaBT = wtlr * (1.f - e + bx_precision * (bt_mean - bt_variate)) / Hbt;
-
-		bt_variate += deltaBT;
-		t += deltaBT;
-		tau = expf(t);
-		e = .5f * epsilon * epsilon * tau;
-	}
-	// BT changed
-	// fx not up to date
-#endif
-
-
-
-	{
-		float deltaFX = tanhf(x) - fx;
-		fx += deltaFX;
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-
-
-#ifdef DYNAMIC_PRECISIONS
-			float Hwt = c.e * fx * fx + wx_precisions[k];	// L1 is also the real H (E is convex in wt)
-			float deltaWt = wtlr * ((1.f - c.e) * fx + wt_precisions[k] * (wt_means[k] - wt_variates[k])) / Hwt;
-			deltaWt *= 1.0f - ((wt_variates[k] * deltaWt) > 0.f) * wtReg;
-			wt_variates[k] += deltaWt;
-#endif
-
-
-
-			float Hwx = c.tau * fx * fx + wx_precisions[k];	// L1, not the real H
-			float deltaWx = wxlr * (c.epsilon * c.tau * fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hwx;
-			deltaWx *= 1.0f - ((wx_variates[k] * deltaWx) > 0.f) * wxReg;
-			wx_variates[k] += deltaWx;
-		}
-	}
-	// All local quantities up to date but mu and t do not correspond to the parent's activations.
-}
-
-void Node::synchronousGradientStep_X_only()
-{
-	//Everything up to date initially
-
-	{
-		float grad = -epsilon * tau;
-		float fprime = 1.0f - powf(fx, 2.f);
-		float grad_acc = .0f;
-
-		float H = tau;
-
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-			grad_acc += c.epsilon * c.tau * wx_variates[k];
-
-
-#ifdef DYNAMIC_PRECISIONS
-			grad_acc += wt_variates[k] * (c.e - 1.f);
-#endif
-
-
-			float fpw = wx_variates[k] * fprime;
-
-#ifdef NO_SECOND_ORDER
-			//
-#elif defined SECOND_ORDER_TAU
-			//
-#elif defined SECOND_ORDER_MAX
-			H = std::max(H, abs(c.tau * fpw));
-#elif defined SECOND_ORDER_L1
-			H += abs(c.tau * fpw * (c.epsilon * fx + fpw));
-#elif defined SECOND_ORDER_EXACT
-			H += c.tau * fpw * (c.epsilon * fx + fpw);
-#endif
-		}
-		grad += fprime * grad_acc;
-
-#ifdef NO_SECOND_ORDER
-		H = 1.f;
-#endif
-
-		float deltaX = xlr * grad / H;
-#ifdef SECOND_ORDER_EXACT
-		deltaX = std::clamp(xlr * grad / H, -1.f, 1.f);
-#endif
-
-
-		deltaX *= 1.0f - ((x * deltaX) > 0.f) * xReg;
-		x += deltaX;
-		epsilon = x - mu;
-#ifdef DYNAMIC_PRECISIONS
-		e = .5f * epsilon * epsilon * tau;
-#endif
-
-		fx = tanhf(x);
-	}
-	// X changed
-	// All local quantities up to date but mu and t do not correspond to the parent's activations.
-}
-
-void Node::synchronousGradientStep_WB_only()
-{
-	//Everything up to date initially
-
-
-	{
-		float Hbx = tau + bx_precision;	// L1, not the real H
-		float deltaBX = wxlr * (epsilon * tau + bx_precision * (bx_mean - bx_variate)) / Hbx;
-		bx_variate += deltaBX;
-		mu += deltaBX;
-		epsilon = x - mu;
-	}
-	// BX changed
-	// e not up to date
-
-
-#ifdef DYNAMIC_PRECISIONS
-	{
-		e = .5f * epsilon * epsilon * tau;
-
-		float Hbt = e + bt_precision;	// L1, not the real H
-		float deltaBT = wtlr * (1.f - e + bx_precision * (bt_mean - bt_variate)) / Hbt;
-
-		bt_variate += deltaBT;
-		t += deltaBT;
-		tau = expf(t);
-		e = .5f * epsilon * epsilon * tau;
-	}
-	// BT changed
-	// everything up to date
-#endif
-
-
-
-	{
-		for (int k = 0; k < nChildren; k++)
-		{
-			Node& c = *children[k];
-
-
-#ifdef DYNAMIC_PRECISIONS
-			float Hwt = c.e * fx * fx + wx_precisions[k];	// L1 is also the real H (E is convex in wt)
-			float deltaWt = wtlr * ((1.f - c.e) * fx + wt_precisions[k] * (wt_means[k] - wt_variates[k])) / Hwt;
-			deltaWt *= 1.0f - ((wt_variates[k] * deltaWt) > 0.f) * wtReg;
-			wt_variates[k] += deltaWt;
-#endif
-
-			float Hwx = c.tau * fx * fx + wx_precisions[k];	// L1, not the real H
-			float deltaWx = wxlr * (c.epsilon * c.tau * fx + wx_precisions[k] * (wx_means[k] - wx_variates[k])) / Hwx;
-			deltaWx *= 1.0f - ((wx_variates[k] * deltaWx) > 0.f) * wxReg;
-			wx_variates[k] += deltaWx;
-		}
-	}
-	// All local quantities up to date but mu and t do not correspond to the parent's activations.
-}
 
 
 void Node::calcifyWB()
 {
+
 	for (int k = 0; k < nChildren; k++)
 	{
-		// += observationImportance * .5f * tau[i][j] * powf(fx[i + 1][k], 2.0f); does not work, beacause already implicitly present in the value w takes.
-		//  But having the importance increase of a constant quantity all the time feels wrong... TODO priority
-		wx_precisions[k] = (wx_precisions[k] + observationImportance) * certaintyDecay;
+		float deltaWxk2 = powf(wx_variates[k] - wx_means[k], 2.0f);
+		float decayWxk = std::max(expf(-certaintyDecay * deltaWxk2 * wx_precisions[k]), .8f);
 
+		wx_energies[k] = children[k]->resetFlag * wx_energies[k] * decayWxk + deltaWxk2; // without taus
+		//wx_energies[k] = children[k]->resetFlag * wx_energies[k] * decayWxk + deltaWxk2 * wx_precisions[k]; // with taus
+
+		wx_precisions[k] = wx_precisions[k] * decayWxk + observationImportance * fx * fx;
+		wx_precisions[k] = std::min(wx_precisions[k], certaintyLimit);
 		wx_means[k] = wx_variates[k];
+
+
+#ifdef DYNAMIC_PRECISIONS
+		float deltaWtk = wt_variates[k] - wt_means[k];
+		float decayWtk = std::max(expf(-certaintyDecay * powf(deltaWtk, 2.0f) * wt_precisions[k]), .8f);
+
+		wt_precisions[k] = wt_precisions[k] * decayWtk + observationImportance * fx * fx;
+		wt_precisions[k] = std::min(wt_precisions[k], certaintyLimit);
+		wt_means[k] = wt_variates[k];
+#endif
 	}
 	
-	bx_precision += observationImportance;
-	bx_precision *= certaintyDecay;
+	float deltaBx2 = powf(bx_variate - bx_mean, 2.0f);
+	float decayBx = std::max(expf(-certaintyDecay * deltaBx2 * bx_precision), .8f);
 
+	bx_energy = resetFlag * bx_energy * decayBx + deltaBx2 * (1.f + powf(bx_precision / tau, 2.f)); // without taus
+	//bx_energy = resetFlag * bx_energy * decayBx + deltaBx2 * bx_precision * (1.f + bx_precision / tau); // with taus
+	
+
+	bx_precision = bx_precision * decayBx + observationImportance;
+	bx_precision = std::min(bx_precision, certaintyLimit);
 	bx_mean = bx_variate;
+
+	
+
+#ifdef DYNAMIC_PRECISIONS
+	float deltaBt = bt_variate - bt_mean;
+	float decayBt = std::max(expf(-certaintyDecay * powf(deltaBt, 2.0f) * bt_precision), .8f);
+
+	bt_precision = bt_precision * decayBt + observationImportance;
+	bt_precision = std::min(bt_precision, certaintyLimit);
+	bt_mean = bt_variate;
+#endif
 }
 
 
@@ -631,11 +270,7 @@ void Node::setActivation(float newX)
 	x = newX;
 	epsilon = x - mu;
 
-#ifdef DYNAMIC_PRECISIONS
-	e = .5f * epsilon * epsilon * tau;
-#endif
-
-	float deltaFX = tanhf(x) - fx;
+	float deltaFX = F(x) - fx;
 	fx += deltaFX;
 
 	for (int k = 0; k < nChildren; k++)
@@ -675,6 +310,19 @@ void Node::computeLocalQuantities()
 
 #ifdef DYNAMIC_PRECISIONS
 	tau = expf(t);
-	e = .5f * epsilon * epsilon * tau;
 #endif
+}
+
+
+void Node::prepareToReceiveEnergies()
+{
+	accumulatedEnergy = bx_energy;
+}
+
+void Node::transmitEnergies()
+{
+	for (int k = 0; k < nChildren; k++)
+	{
+		children[k]->accumulatedEnergy += wx_energies[k];
+	}
 }

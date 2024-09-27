@@ -82,13 +82,14 @@ void ANode::updateActivation()
 		sw2 += w_variates[i] * w_variates[i];
 	}
 
-	float xstar = (mu + swv) / (1.f + sw2);
+	float xstar = (mu + swv) / (1.f + sw2 + xReg);
 	float clmpxstar = std::clamp(xstar, .0f, 1.f);
 
 	if (xstar != clmpxstar)  // x not in [0, 1], so saturated. As branchless as possible.
 	{
-		xstar = (((mu-1.f) * clmpxstar - mu * (1.f- clmpxstar)) > 0.f) ? 
-			(clmpxstar * xReg + mu)/(1.f + xReg) : 
+		
+		xstar = (((mu - 1.f) * clmpxstar - mu * (1.f - clmpxstar)) > 0.f) ?
+			mu / (1.f + xReg) :
 			clmpxstar;
 	}
 	x = x * (1.f - xlr) + xstar * xlr;

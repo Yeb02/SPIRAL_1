@@ -28,9 +28,10 @@ int main()
 
 
 
-	bool testANetworkClass = true;
-	bool testNetworkClass = false;
-	
+	bool testANetworkClass = false;
+	bool testNetworkClass = true;
+	bool testFCNclass = false;
+
 	if (testANetworkClass)
 	{
 
@@ -51,10 +52,10 @@ int main()
 		constexpr bool dynamicTopology = false;
 
 		// C++ is really stupid sometimes
-		/*const int _nLayers = 4;
-		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 15, 10, 0 };*/
-		const int _nLayers = 2;
-		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 10, 0 };
+		const int _nLayers = 4;
+		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 15, 10, 0 };
+		/*const int _nLayers = 2;
+		int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 10, 0 };*/
 
 
 		int nLayers = _nLayers;
@@ -115,25 +116,32 @@ int main()
 	else if (testNetworkClass)
 	{
 
-		Node::xlr = .8f;
-		Node::wxlr = .3f;
-		Node::wtlr = .1f;
+		Node::xlr = 1.f;
+		Node::wxlr = .5f;
+		Node::wtlr = .3f;
 
-		Node::wxPriorStrength = .2f;
-		Node::wtPriorStrength = 3.f;
-		Node::observationImportance = 1.f;
-		Node::certaintyDecay = .98f;
+		Node::wxPriorStrength = .5f;
+		Node::wtPriorStrength = 1.0f;
+		Node::observationImportance = 1.0f;
+		Node::certaintyDecay = 1.f;
+		Node::certaintyLimit = 50.f;
 
-		Node::xReg = .1f;
-		Node::wxReg = .0f;
-		Node::wtReg = .3f;
+		Node::xReg = .05f;
+		Node::wxReg = .025f;
+		Node::wtReg = 5.f;
+		Node::btReg = .5f;
 
-		int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More step require lower wxlr.
+		int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
 		int nTestSteps = 4;
 		
-		constexpr bool dynamicTopology = false;
-		constexpr bool synchronizedDescent = false;
-		
+		constexpr bool dynamicTopology = true;
+#ifdef DYNAMIC_PRECISIONS // good values for these parameters vary wildly if DYNAMIC_PRECISIONS is switched
+		Network::KC = 4.f;
+		Network::KN = 50.f;
+#else
+		Network::KC = 10.f;
+		Network::KN = 100.f;
+#endif
 		// C++ is really stupid sometimes
 		const int _nLayers = 4;
 		int _sizes[_nLayers + 2] = {0, datapointS + labelS, 20, 15, 10, 0};
@@ -142,10 +150,8 @@ int main()
 
 
 
-
 		int nLayers = _nLayers;
 		int* sizes = &(_sizes[1]);
-
 		if (dynamicTopology) 
 		{
 			nLayers = 0;
@@ -158,13 +164,13 @@ int main()
 		bool onePerClass = true;
 		onePerClass = false;
 		if (onePerClass) {
-			for (int u = 0; u < 3; u++) {
+			for (int u = 0; u < 5; u++) {
 				for (int i = 0; i < 10; i++) {
 					int id = 0;
 					while (batchedLabels[id][i] != 1.0f) {
 						id++;
 					}
-					nn.asynchronousLearn(batchedPoints[id], batchedLabels[id], 10);
+					nn.learn(batchedPoints[id], batchedLabels[id], 10);
 				}
 				LOG("LOOP " << u << " done.\n\n")
 			}
@@ -172,8 +178,7 @@ int main()
 		else {
 			for (int i = 0; i < 500; i++)
 			{
-				if (synchronizedDescent) nn.synchronousLearn(batchedPoints[i], batchedLabels[i], nTrainSteps);
-				else nn.asynchronousLearn(batchedPoints[i], batchedLabels[i], nTrainSteps);
+				nn.learn(batchedPoints[i], batchedLabels[i], nTrainSteps);
 			}
 		}
 
@@ -183,8 +188,7 @@ int main()
 		float* output = nn.output;
 		for (int i = 0; i < nTests; i++)
 		{
-			if (synchronizedDescent) nn.synchronousEvaluate(testBatchedPoints[i], nTestSteps);
-			else nn.asynchronousEvaluate(testBatchedPoints[i], nTestSteps);
+			nn.evaluate(testBatchedPoints[i], nTestSteps);
 			
 			LOG("\n");
 
@@ -199,8 +203,16 @@ int main()
 			nCorrects += isCorrect;
 		}
 		LOGL("\n" << (float)nCorrects / (float)nTests);
+
+		if (dynamicTopology)
+		{
+			int nAddedNodes = nn.getNNodes() - labelS - datapointS;
+			LOGL("\nNetwork has added " + std::to_string(nAddedNodes) + " new nodes.\n");
+		}
+
 	} 
-	else {
+	else if (testFCNclass)
+	{
 
 #ifdef LABEL_IS_DATAPOINT
 		const int nLayers = 4;

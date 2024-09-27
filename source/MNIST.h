@@ -52,8 +52,8 @@ float** read_mnist_images(std::string full_path, int number_of_images) {
             file.read((char*)buffer, image_size);
             dataset[i] = new float[image_size];
             for (int j = 0; j < image_size; j++) {
-                dataset[i][j] = static_cast<float>(buffer[j]) / 255.f;
-                //dataset[i][j] = static_cast<float>(buffer[j]) / 127.5f - 1.0f;
+                //dataset[i][j] = static_cast<float>(buffer[j]) / 255.f; // in [0, 1]
+                dataset[i][j] = static_cast<float>(buffer[j]) / 127.5f - 1.0f; // in [-1, 1]
             }
         }
 
@@ -89,8 +89,8 @@ float** read_mnist_labels(std::string full_path, int number_of_labels) {
         file.read(buffer, number_of_labels);
         for (int i = 0; i < number_of_labels; i++) {
             dataset[i] = new float[10];
-            //std::fill(dataset[i], dataset[i] + 10, -1.0f);
-            std::fill(dataset[i], dataset[i] + 10, .0f);
+            std::fill(dataset[i], dataset[i] + 10, -1.0f);
+            //std::fill(dataset[i], dataset[i] + 10, .0f);
             dataset[i][buffer[i]] = 1.0f;
         }
 
