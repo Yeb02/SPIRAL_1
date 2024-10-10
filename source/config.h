@@ -11,27 +11,29 @@
 #define SECOND_ORDER_L1
 
 
-#define DYNAMIC_PRECISIONS 
-
-
-#define ASYNCHRONOUS_UPDATES // TODO test synchronous, second order should mitigate divergence issues
-#ifdef ASYNCHRONOUS_UPDATES
-#define RANDOM_UPDATE_ORDER
+//#define DYNAMIC_PRECISIONS 
+#ifdef DYNAMIC_PRECISIONS
+#define WBX_IGNORE_TAU 
 #endif
 
 
-#define F(x) (2.0f*tanhf(x) + 1.f) // F' = 2(1-tanhf²) = 2 - .5 * (F-1)²
+
+#define ASYNCHRONOUS_UPDATES // TODO re-test synchronous, second order should mitigate divergence issues
+
+
+#define F(x) (2.0f*tanhf(x) + 1.f) // F' = 2(1-tanhf²) = 2 - .5 * (F-1)². Not quite sigmoide.
 
 // one and only one must be active:
-//#define REGX 1.0f
-//#define REGX (fx * fx)
-#define REGWX (c.epsilon * c.epsilon * fx * fx)
+//#define REGWX 1.0f
+#define REGWX (fi * fi)
+//#define REGWX (epsilon * epsilon * fi * fi)
 
 // one and only one must be active:
 //#define REGWT 1.0f
-#define REGWT fx * fx
+#define REGWT (fi * fi)
 
 // one and only one must be active:
-#define REGBT 1.0f
+#define REGBT .0f
+//#define REGBT 1.0f
 
 

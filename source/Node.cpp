@@ -6,12 +6,14 @@ float Node::xlr = .8f;
 float Node::wxlr = .1f;
 float Node::wtlr = .1f;
 
+float Node::lambda1 = 1.f;
+float Node::lambda2 = 1.f;
+
 float Node::wxPriorStrength = .2f;
 float Node::wtPriorStrength = .2f;
 
 float Node::observationImportance = 1.0f;
-float Node::certaintyDecay = 1.0f;
-float Node::certaintyLimit = 100.0f;
+float Node::certaintyDecay = .01f;
 
 float Node::xReg = .01f;
 float Node::wxReg = .01f;
@@ -24,6 +26,8 @@ Node::Node(int _nChildren, Node** _children) :
 	nChildren(_nChildren)
 {
 	
+	parents.resize(0); // for completeness
+	inParentsListIDs.resize(0); // for completeness
 
 	children = new Node*[nChildren];
 	std::copy(_children, _children + nChildren, children);
@@ -46,10 +50,7 @@ Node::Node(int _nChildren, Node** _children) :
 
 
 	accumulatedEnergy = .0f;
-	bx_energy = 0.f;
-	wx_energies = new float[nChildren];
-	std::fill(wx_energies, wx_energies + nChildren, .0f);
-	resetFlag = 1.f;
+
 
 #ifdef DYNAMIC_PRECISIONS
 
@@ -88,9 +89,6 @@ Node::~Node()
 #endif
 }
 
-#ifdef DYNAMIC_PRECISIONS
-const float eta = .0f;
-#endif 
 
 void Node::XGradientStep()
 {
@@ -105,9 +103,7 @@ void Node::XGradientStep()
 		Node& c = *children[k];
 
 #ifdef DYNAMIC_PRECISIONS
-		grad_acc += c.tau * c.epsilon * (- wx_variates[k] + wt_variates[k] * c.epsilon) - wt_variates[k];
-		
-		grad_acc += eta * wt_variates[k] * c.tau;
+		grad_acc += c.tau * c.epsilon * (-wx_variates[k] + wt_variates[k] * c.epsilon); // -wt_variates[k];
 #else
 		grad_acc -= c.tau * c.epsilon * wx_variates[k];
 #endif
@@ -153,10 +149,17 @@ void Node::XGradientStep()
 #endif 
 }
 
+
+// deprecated
 void Node::WBGradientStep()
 {
-	float Hbx = tau + bx_precision;	
+#ifdef WBX_IGNORE_TAU
+	float Hbx = bx_precision + 1.f;
+	float gradbx = bx_precision * (bx_variate - bx_mean) - epsilon;
+#else
+	float Hbx = bx_precision + tau;
 	float gradbx = bx_precision * (bx_variate - bx_mean) - epsilon * tau;
+#endif
 	float deltaBx = - wxlr * gradbx / Hbx;
 
 	bx_variate += deltaBx;
@@ -165,12 +168,12 @@ void Node::WBGradientStep()
 	
 
 #ifdef DYNAMIC_PRECISIONS
+
+
 	float te2 = .5f * epsilon * epsilon * tau;
 	float Hbt = btReg * REGBT + te2 + bt_precision;
-	Hbt += eta * tau;
 	float gradbt = btReg * REGBT * (bt_variate-.5f)
 		+ bt_precision * (bt_variate - bt_mean) + te2 - 1.f;
-	gradbt += eta * tau;
 	float deltaBT = -wtlr * gradbt / Hbt;
 
 	bt_variate += deltaBT;
@@ -184,12 +187,10 @@ void Node::WBGradientStep()
 
 #ifdef DYNAMIC_PRECISIONS
 		float te2k = .5f * c.epsilon * c.epsilon * c.tau;
-		float Hwtk = wtReg * REGWT
-			+ wx_precisions[k] + te2k * fx * fx;	
-		Hwtk += eta * c.tau * fx * fx;
-		float gradwtk = wtReg * wt_variates[k] * REGWT
-			+ wx_precisions[k] * (wt_variates[k] - wt_means[k]) + te2k * fx * fx - fx;
-		gradwtk += eta * c.tau * fx;
+		float Hwtk = //wtReg * REGWT +
+			 wx_precisions[k] + te2k * fx * fx;	
+		float gradwtk = //wtReg * wt_variates[k] * REGWT + 
+			wx_precisions[k] * (wt_variates[k] - wt_means[k]) + te2k * fx * fx - fx;
 		float deltaWtk = - wtlr * gradwtk / Hwtk;
 		wt_variates[k] += deltaWtk;
 #ifdef ASYNCHRONOUS_UPDATES
@@ -198,11 +199,17 @@ void Node::WBGradientStep()
 #endif
 #endif
 
-
-		float Hwxk = wxReg * REGWX
-			+ wx_precisions[k] + c.tau * fx * fx;
-		float gradwxk = wxReg * wx_variates[k] * REGWX
-			+ wx_precisions[k] * (wx_variates[k] - wx_means[k]) - c.tau * c.epsilon * fx;
+#ifdef WBX_IGNORE_TAU
+		float Hwxk = //wxReg * REGWX+ 
+			wx_precisions[k] + fx * fx;
+		float gradwxk =// wxReg * wx_variates[k] * REGWX+ 
+			wx_precisions[k] * (wx_variates[k] - wx_means[k]) - c.epsilon * fx;
+#else
+		float Hwxk = //wxReg * REGWX+ 
+			wx_precisions[k] + c.tau * fx * fx;
+		float gradwxk = //wxReg * wx_variates[k] * REGWX+ 
+			wx_precisions[k] * (wx_variates[k] - wx_means[k]) - c.tau * c.epsilon * fx;
+#endif
 		float deltaWxk = - wxlr * gradwxk / Hwxk;
 		wx_variates[k] += deltaWxk;
 #ifdef ASYNCHRONOUS_UPDATES
@@ -213,54 +220,113 @@ void Node::WBGradientStep()
 }
 
 
+void Node::setAnalyticalWX()
+{
+	float s1 = 1.0f / bx_precision;
+	float s2 = bx_mean;
+
+
+	for (int i = 0; i < parents.size(); i++)
+	{
+		int id = inParentsListIDs[i];
+		float fi = parents[i]->fx;
+		float t1 = fi / (parents[i]->wx_precisions[id] + wxReg * REGWX);
+
+		s1 += fi * t1;
+		s2 += fi * parents[i]->wx_means[id] * parents[i]->wx_precisions[id];
+	}
+
+
+	epsilon = (x - s2) / (1.f + s1);
+	mu = x - epsilon;
+
+
+	bx_variate = epsilon/ bx_precision + bx_mean;
+	for (int i = 0; i < parents.size(); i++)
+	{
+		int id = inParentsListIDs[i];
+		float fi = parents[i]->fx;
+		float tau_i = parents[i]->wx_precisions[id];
+
+		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id])/(tau_i + wxReg * REGWX);
+	}
+}
+
+
+void Node::setAnalyticalWT()
+{
+#ifdef DYNAMIC_PRECISIONS
+	float s1 = 1.0f / bt_precision;
+	float s2 = bt_mean;
+
+
+	for (int i = 0; i < parents.size(); i++)
+	{
+		int id = inParentsListIDs[i];
+		float fi = parents[i]->fx;
+		float t1 = fi / (parents[i]->wt_precisions[id] + wtReg * REGWT);
+
+		s1 += fi * t1;
+		s2 += fi * parents[i]->wt_means[id] * parents[i]->wt_precisions[id];
+	}
+
+	float r = .0f;
+	if (nChildren != 0) {
+		for (int i = 0; i < nChildren; i++)
+		{
+			r += children[i]->epsilon * children[i]->epsilon * powf((float)children[i]->parents.size(), -1.f);
+		}
+		r = logf(epsilon * epsilon / r);
+	}
+	float m = -2.f * logf(epsilon);
+	float a = lambda1 * r + lambda2 * m;
+	float b = lambda1 + lambda2;
+
+
+	t = (s2 + a * s1) / (1.f + b * s1);
+	tau = expf(t);
+
+	float ambt = a - b * t;
+	bx_variate = ambt / bx_precision + bx_mean;
+	for (int i = 0; i < parents.size(); i++)
+	{
+		int id = inParentsListIDs[i];
+		float fi = parents[i]->fx;
+		float tau_i = parents[i]->wt_precisions[id];
+
+		parents[i]->wt_variates[id] = (ambt*fi + tau_i * parents[i]->wt_means[id]) / (tau_i + wtReg * REGWT);
+	}
+#endif
+}
+
 
 void Node::calcifyWB()
 {
 
 	for (int k = 0; k < nChildren; k++)
 	{
-		float deltaWxk2 = powf(wx_variates[k] - wx_means[k], 2.0f);
-		float decayWxk = std::max(expf(-certaintyDecay * deltaWxk2 * wx_precisions[k]), .8f);
-
-		wx_energies[k] = children[k]->resetFlag * wx_energies[k] * decayWxk + deltaWxk2; // without taus
-		//wx_energies[k] = children[k]->resetFlag * wx_energies[k] * decayWxk + deltaWxk2 * wx_precisions[k]; // with taus
-
-		wx_precisions[k] = wx_precisions[k] * decayWxk + observationImportance * fx * fx;
-		wx_precisions[k] = std::min(wx_precisions[k], certaintyLimit);
+		wx_precisions[k] = wx_precisions[k] * (1.0f - fx*fx*certaintyDecay) + observationImportance * fx * fx;
 		wx_means[k] = wx_variates[k];
 
 
 #ifdef DYNAMIC_PRECISIONS
-		float deltaWtk = wt_variates[k] - wt_means[k];
-		float decayWtk = std::max(expf(-certaintyDecay * powf(deltaWtk, 2.0f) * wt_precisions[k]), .8f);
-
-		wt_precisions[k] = wt_precisions[k] * decayWtk + observationImportance * fx * fx;
-		wt_precisions[k] = std::min(wt_precisions[k], certaintyLimit);
+		wt_precisions[k] = wt_precisions[k] * (1.0f - fx * fx * certaintyDecay) + observationImportance * fx * fx;
 		wt_means[k] = wt_variates[k];
 #endif
 	}
 	
-	float deltaBx2 = powf(bx_variate - bx_mean, 2.0f);
-	float decayBx = std::max(expf(-certaintyDecay * deltaBx2 * bx_precision), .8f);
-
-	bx_energy = resetFlag * bx_energy * decayBx + deltaBx2 * (1.f + powf(bx_precision / tau, 2.f)); // without taus
-	//bx_energy = resetFlag * bx_energy * decayBx + deltaBx2 * bx_precision * (1.f + bx_precision / tau); // with taus
-	
-
-	bx_precision = bx_precision * decayBx + observationImportance;
-	bx_precision = std::min(bx_precision, certaintyLimit);
+	bx_precision = bx_precision * (1.0f - certaintyDecay) + observationImportance;
 	bx_mean = bx_variate;
 
 	
 
 #ifdef DYNAMIC_PRECISIONS
-	float deltaBt = bt_variate - bt_mean;
-	float decayBt = std::max(expf(-certaintyDecay * powf(deltaBt, 2.0f) * bt_precision), .8f);
-
-	bt_precision = bt_precision * decayBt + observationImportance;
-	bt_precision = std::min(bt_precision, certaintyLimit);
+	bt_precision = bt_precision * (1.0f - certaintyDecay) + observationImportance * (lambda1 + lambda2);
 	bt_mean = bt_variate;
 #endif
+
+
+	accumulatedEnergy = accumulatedEnergy * .99f + epsilon * epsilon;
 }
 
 
@@ -313,16 +379,3 @@ void Node::computeLocalQuantities()
 #endif
 }
 
-
-void Node::prepareToReceiveEnergies()
-{
-	accumulatedEnergy = bx_energy;
-}
-
-void Node::transmitEnergies()
-{
-	for (int k = 0; k < nChildren; k++)
-	{
-		children[k]->accumulatedEnergy += wx_energies[k];
-	}
-}

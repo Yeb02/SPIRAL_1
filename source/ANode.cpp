@@ -111,48 +111,33 @@ void ANode::updateActivation()
 void ANode::updateIncomingWeights() 
 {
 
-	float s1 = .0f, s2 = .0f;
+	float s1 = 1.0f / b_precision;
+	float s2 = b_mean;
 
-	// b:
-	s1 = 1.0f / b_precision;
 
-	// first and second formulas seem to work better.
-	//float lambdab = wReg * epsilon * epsilon; 
-	float lambdab = wReg * epsilon * epsilon * 1.0f * 1.0f; //  (1.0f = parent->fx)
-	//float lambdab = wReg; 
-
-	s2 = b_mean + s1 * lambdab;
-
-	// ws:
-	for (int i = 0; i < nParents; i++) 
+	for (int i = 0; i < parents.size(); i++)
 	{
+		int id = inParentsListIDs[i];
 		float fi = parents[i]->fx;
-		float fi_div_twi = fi / parents[i]->w_precisions[inParentsListIDs[i]];
+		float t1 = fi / (parents[i]->w_precisions[id] + wReg * REGWX);
 
-		s1 += fi * fi_div_twi;
-
-		float lambdai = wReg * epsilon * epsilon * fi * fi;
-
-		s2 += fi * parents[i]->w_means[inParentsListIDs[i]] + lambdai * fi_div_twi;
+		s1 += fi * t1;
+		s2 += fi * parents[i]->w_means[id] * parents[i]->w_precisions[id];
 	}
 
-	
+
 	epsilon = (x - s2) / (1.f + s1);
 	mu = x - epsilon;
 
-	// b:
-	b_variate = b_mean + (epsilon + lambdab) / b_precision;
 
-	// ws:
-	for (int i = 0; i < nParents; i++)
+	b_variate = epsilon / b_precision + b_mean;
+	for (int i = 0; i < parents.size(); i++)
 	{
+		int id = inParentsListIDs[i];
 		float fi = parents[i]->fx;
+		float tau_i = parents[i]->w_precisions[id];
 
-		// to be rigorous, should use the value of epsilon before the update, but same results so ...
-		float lambdai = wReg * epsilon * epsilon * fi * fi;
-
-		parents[i]->w_variates[inParentsListIDs[i]] = parents[i]->w_means[inParentsListIDs[i]] +
-			(fi * epsilon + lambdai) / parents[i]->w_precisions[inParentsListIDs[i]];
+		parents[i]->w_variates[id] = (epsilon * fi + tau_i * parents[i]->w_means[id]) / (tau_i + wReg * REGWX);
 	}
 }
 

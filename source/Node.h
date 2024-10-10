@@ -9,8 +9,12 @@ class Node
 public:
 
 	static float xlr;
-	static float wxlr;
+
+	static float wxlr; 
 	static float wtlr;
+
+	static float lambda1;
+	static float lambda2;
 
 	
 	static float xReg; 
@@ -24,11 +28,13 @@ public:
 
 	static float observationImportance;
 	static float certaintyDecay;
-	static float certaintyLimit;
 
 
 	int nChildren;
 	Node **children;
+	
+	std::vector<Node*> parents;
+	std::vector<int> inParentsListIDs;
 
 	float bx_variate;
 	float bx_mean; 
@@ -57,13 +63,10 @@ public:
 	float x, fx, tau, epsilon, mu;
 
 
-
+	// for topology
 	float accumulatedEnergy; 
-	float bx_energy;
-	float* wx_energies;
-	// Used to zero the accumulated energies in the incoming weights if this node just had a new parent added.
-	// This may look convoluted but it is actually the simplest way to do it. Maybe not the most efficient though.
-	float resetFlag; 
+
+
 
 	Node(int _nChildren, Node** _children);
 
@@ -72,9 +75,15 @@ public:
 
 	void XGradientStep();
 
+	// deprecated
 	void WBGradientStep();
 
 
+	void setAnalyticalWX();
+
+	void setAnalyticalWT();
+
+	
 
 	// Sets the MAP ('mean') to the variate, and updates the precision
 	void calcifyWB();
@@ -97,10 +106,5 @@ public:
 	// Sets all values depending directly on the raw predictions that the parent sent:
 	// epsilon, tau.
 	void computeLocalQuantities();
-
-
-	
-	void prepareToReceiveEnergies();
-	void transmitEnergies();
 
 };

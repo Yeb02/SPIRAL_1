@@ -117,30 +117,31 @@ int main()
 	{
 
 		Node::xlr = 1.f;
-		Node::wxlr = .5f;
+		Node::wxlr = .8f;
 		Node::wtlr = .3f;
 
 		Node::wxPriorStrength = .5f;
 		Node::wtPriorStrength = 1.0f;
-		Node::observationImportance = 1.0f;
-		Node::certaintyDecay = 1.f;
-		Node::certaintyLimit = 50.f;
+		Node::observationImportance = .5f;
+		Node::certaintyDecay = .01f;
 
 		Node::xReg = .05f;
 		Node::wxReg = .025f;
-		Node::wtReg = 5.f;
-		Node::btReg = .5f;
+		Node::wtReg = 1.0f;
+		Node::btReg = 1.0f;
 
-		int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
-		int nTestSteps = 4;
-		
-		constexpr bool dynamicTopology = true;
+		Node::lambda1 = 1.f;
+		Node::lambda2 = 1.f;
+
+
+	
+		constexpr bool dynamicTopology = false; // TODO make the accumulatedEnergy decay of the nodes into a parameter
 #ifdef DYNAMIC_PRECISIONS // good values for these parameters vary wildly if DYNAMIC_PRECISIONS is switched
 		Network::KC = 4.f;
 		Network::KN = 50.f;
 #else
-		Network::KC = 10.f;
-		Network::KN = 100.f;
+		Network::KC = 8.f;
+		Network::KN = 200.f;
 #endif
 		// C++ is really stupid sometimes
 		const int _nLayers = 4;
@@ -160,9 +161,13 @@ int main()
 		
 		Network nn(datapointS, labelS, nLayers, sizes);
 
+		int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
+		int nTestSteps = 4;
+		int nTests = 1000;
 		
-		bool onePerClass = true;
-		onePerClass = false;
+		bool onePerClass = false;
+		bool onlineRandom = true;
+		bool timeDependancy = false;
 		if (onePerClass) {
 			for (int u = 0; u < 5; u++) {
 				for (int i = 0; i < 10; i++) {
@@ -170,39 +175,112 @@ int main()
 					while (batchedLabels[id][i] != 1.0f) {
 						id++;
 					}
-					nn.learn(batchedPoints[id], batchedLabels[id], 10);
+					nn.learn(batchedPoints[id], batchedLabels[id], nTrainSteps);
 				}
 				LOG("LOOP " << u << " done.\n\n")
 			}
 		}
-		else {
+		else if (onlineRandom){
 			for (int i = 0; i < 500; i++)
 			{
 				nn.learn(batchedPoints[i], batchedLabels[i], nTrainSteps);
 			}
 		}
+		else if (timeDependancy){
+			int id = 0;
+			for (int u = 0; u < 250; u++) { // 50k train datapoints so (250 * 10) < 50000 is safe in expectation
+				nn.learn(batchedPoints[id], batchedLabels[id], nTrainSteps);
 
+				int label = -1;
+				for (int i = 0; i < 10; i++)
+				{
+					if (batchedLabels[id][i] == 1.0f) {
+						label = i;
+						break;
+					}
+				}
 
-		int nTests = 1000;
-		int nCorrects = 0;
-		float* output = nn.output;
-		for (int i = 0; i < nTests; i++)
-		{
-			nn.evaluate(testBatchedPoints[i], nTestSteps);
-			
-			LOG("\n");
-
-
-			float MSE_loss = .0f;
-			for (int j = 0; j < labelS; j++)
-			{
-				MSE_loss += powf(output[j] - testBatchedLabels[i][j], 2.0f);
+				int j = 1;
+				while (batchedLabels[id+j][(label+1)%10] != 1.0f) {
+					j++;
+				}
+				
+				id = id + j;
+				nn.learn(batchedPoints[id], batchedLabels[id], nTrainSteps);
+				id++;
 			}
-			int isCorrect = isCorrectAnswer(output, testBatchedLabels[i]);
-			LOGL(isCorrect << " " << MSE_loss << "\n");
-			nCorrects += isCorrect;
 		}
-		LOGL("\n" << (float)nCorrects / (float)nTests);
+
+		if (timeDependancy) {
+			int nCorrects = 0;
+			float* output = nn.output;
+			int id = 0;
+			for (int u = 0; u < 500; u++) { // 10k test datapoints so (500 * 10) < 10000 is safe in expectation
+				
+				nn.evaluate(testBatchedPoints[id], nTestSteps);
+				LOG("\n");
+				float MSE_loss = .0f;
+				for (int v = 0; v < labelS; v++)
+				{
+					MSE_loss += powf(output[v] - testBatchedLabels[id][v], 2.0f);
+				}
+				int isCorrect = isCorrectAnswer(output, testBatchedLabels[id]);
+				LOGL(isCorrect << " " << MSE_loss << "\n");
+				nCorrects += isCorrect;
+
+
+				int label = -1;
+				for (int i = 0; i < 10; i++)
+				{
+					if (batchedLabels[id][i] == 1.0f) {
+						label = i;
+						break;
+					}
+				}
+
+				int j = 1;
+				while (batchedLabels[id + j][(label + 1) % 10] != 1.0f) {
+					j++;
+				}
+
+				id = id + j;
+				nn.evaluate(testBatchedPoints[id], nTestSteps); 
+				LOG("\n");
+				MSE_loss = .0f;
+				for (int v = 0; v < labelS; v++)
+				{
+					MSE_loss += powf(output[v] - testBatchedLabels[id][v], 2.0f);
+				}
+				isCorrect = isCorrectAnswer(output, testBatchedLabels[id]);
+				LOGL(isCorrect << " " << MSE_loss << "\n");
+				nCorrects += isCorrect;
+				id++;
+			}
+
+			LOGL("\n" << (float)nCorrects / (float)nTests);
+		}
+		else {
+			int nCorrects = 0;
+			float* output = nn.output;
+			for (int i = 0; i < nTests; i++)
+			{
+				nn.evaluate(testBatchedPoints[i], nTestSteps);
+
+				LOG("\n");
+
+
+				float MSE_loss = .0f;
+				for (int j = 0; j < labelS; j++)
+				{
+					MSE_loss += powf(output[j] - testBatchedLabels[i][j], 2.0f);
+				}
+				int isCorrect = isCorrectAnswer(output, testBatchedLabels[i]);
+				LOGL(isCorrect << " " << MSE_loss << "\n");
+				nCorrects += isCorrect;
+			}
+			LOGL("\n" << (float)nCorrects / (float)nTests);
+		}
+		
 
 		if (dynamicTopology)
 		{

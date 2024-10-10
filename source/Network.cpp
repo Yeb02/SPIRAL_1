@@ -20,20 +20,31 @@ Network::Network(int _datapointSize, int _labelSize, int nLayers, int* sizes) :
 		int offset = 0;
 		for (int i = 0; i < nLayers; i++)
 		{
-			// Works for i == 0 because sizes[] is padded by zeros (see main.cpp)
+			// Keep in mind that sizes[] is padded by zeros (see main.cpp)
 			// Will throw an error if adress sanitizer is on though. But so much more convenient.
-			Node** children = new Node * [sizes[i - 1]]; 
-			std::copy(nodes.data() + offset - sizes[i - 1], nodes.data() + offset, children);
+			Node** children = nodes.data() + offset - sizes[i - 1];
 
 			for (int j = 0; j < sizes[i]; j++) {
 				nodes[offset + j] = new Node(sizes[i - 1], children);
 			}
 
+			for (int j = 0; j < sizes[i - 1]; j++) {
+				children[j]->parents.resize(sizes[i]);
+				std::copy(nodes.data() + offset,
+					nodes.data() + offset + sizes[i],
+					nodes[offset - sizes[i - 1] + j]->parents.data()
+				);
+				children[j]->inParentsListIDs.resize(sizes[i]);
+				std::fill(children[j]->inParentsListIDs.begin(),
+					children[j]->inParentsListIDs.end(),
+					j
+				);
+			}
+
 			offset += sizes[i];
-			delete[] children;
 		}
 
-		// Set the nodes quatities to their correct values to prepare inference
+		// Set the nodes quantities to their correct values to prepare inference
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			nodes[i]->prepareToReceivePredictions();
@@ -76,29 +87,20 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 
 	int nClamped = datapointSize + labelSize;
 
-#ifdef RANDOM_UPDATE_ORDER
 	std::vector<int> permutation(nodes.size() - nClamped);
 	for (int i = nClamped; i < nodes.size(); i++) permutation[i - nClamped] = i;
-#endif 
+
 
 	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++) 
 	{
 		LOG(previousEnergy);
 
-#ifdef RANDOM_UPDATE_ORDER
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < nodes.size() - nClamped; i++)
 		{
 			nodes[permutation[i]]->XGradientStep();
 		}
-#else
-		for (int i = nClamped; i < nodes.size(); i++)
-		{
-			nodes[i]->XGradientStep();
-		}
-#endif
-
 
 #ifndef ASYNCHRONOUS_UPDATES
 		for (int i = 0; i < nodes.size(); i++)
@@ -120,13 +122,15 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 	}
 	LOG(previousEnergy << "\n\n");
 
-	std::vector<int> permutation2(nodes.size());
-	for (int i = 0; i < nodes.size(); i++) permutation2[i] = i;
-	for (int j = 0; j < 4; j++) {
-		std::shuffle(permutation2.begin(), permutation2.end(), generator);
+
+	for (int s = 0; s < 1; s++)
+	{
 		for (int i = 0; i < nodes.size(); i++)
 		{
-			nodes[permutation2[i]]->WBGradientStep();
+			nodes[i]->setAnalyticalWX();
+#ifdef DYNAMIC_PRECISIONS
+			nodes[i]->setAnalyticalWT();
+#endif
 		}
 	}
 
@@ -241,20 +245,7 @@ void Network::setActivities(float* _datapoint, float* _label)
 
 void Network::topologicalOperations()
 {
-	for (int i = 0; i < nodesOverKC.size(); i++)
-	{
-		nodesOverKC[i]->resetFlag = 1.f;
-	}
 	nodesOverKC.clear();
-
-	for (int i = 0; i < nodes.size(); i++)
-	{
-		nodes[i]->prepareToReceiveEnergies();
-	}
-	for (int i = 0; i < nodes.size(); i++)
-	{
-		nodes[i]->transmitEnergies();
-	}
 
 	float acc = .0f;
 	for (int i = 0; i < nodes.size(); i++)
@@ -271,14 +262,20 @@ void Network::topologicalOperations()
 		LOG((int)nodesOverKC.size());
 		LOGL("existing children.");
 
-		nodes.push_back(new Node((int)nodesOverKC.size(), nodesOverKC.data()));
+		Node* newNode = new Node((int)nodesOverKC.size(), nodesOverKC.data());
 
-		nodes[nodes.size() - 1]->transmitPredictions();
+		nodes.push_back(newNode);
+		newNode->transmitPredictions();
 
+		int a = 0;
 		for (int i = 0; i < nodesOverKC.size(); i++)
 		{
-			nodesOverKC[i]->resetFlag = .0f;
+			a += (nodesOverKC[i]->nChildren > 0) ? 1 : 0;
+			nodesOverKC[i]->inParentsListIDs.push_back(i);
+			nodesOverKC[i]->parents.push_back(newNode);
+			nodesOverKC[i]->accumulatedEnergy = 0;
 			nodesOverKC[i]->computeLocalQuantities();
 		}
+		LOGL(a);
 	}
 }
