@@ -102,7 +102,7 @@ float** read_mnist_labels(std::string full_path, int number_of_labels) {
     }
 }
 
-std::tuple<float**, float**> create_batches(float** datapoints, float** labels, int nItems, int batchSize)
+std::tuple<float**, float**> create_batches(float** datapoints, float** labels, int nItems, int batchSize = 1)
 {
     int nBatches = nItems / batchSize;
     float** batchedPoints = new float* [nBatches];

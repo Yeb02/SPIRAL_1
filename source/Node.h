@@ -9,18 +9,10 @@ class Node
 public:
 
 	static float xlr;
-
-	static float wxlr; 
-	static float wtlr;
-
-	static float lambda1;
-	static float lambda2;
-
 	
 	static float xReg; 
 	static float wxReg;
 	static float wtReg;
-	static float btReg;
 
 
 	static float wxPriorStrength;
@@ -30,9 +22,11 @@ public:
 	static float certaintyDecay;
 
 
-	int nChildren;
-	Node **children;
-	
+	static float energyDecay;
+	static float connexionEnergyThreshold;
+
+
+	std::vector<Node*> children;
 	std::vector<Node*> parents;
 	std::vector<int> inParentsListIDs;
 
@@ -41,42 +35,48 @@ public:
 	float bx_precision;
 	
 	// outgoing weights predicting the children's activations
-	float* wx_variates;
-	float* wx_means; 
-	float* wx_precisions;
+	std::vector<float> wx_variates;
+	std::vector<float> wx_means;
+	std::vector<float> wx_precisions;
 
 #ifdef DYNAMIC_PRECISIONS
 	float bt_variate;
 	float bt_mean;
 	float bt_precision;
 
-	// outgoing weights computing the children's tau
-	float* wt_variates;
-	float* wt_means;
-	float* wt_precisions;
+	// outgoing weights computing the children's t
+	std::vector<float> wt_variates;
+	std::vector<float> wt_means;
+	std::vector<float> wt_precisions;
 
-	// the prediction accumulator for tau
+	// the prediction accumulator for tau = expf(t)
 	float t;
 
 #endif
 
 	float x, fx, tau, epsilon, mu;
 
+#if defined(DYNAMIC_PRECISIONS) || defined(FIXED_PRECISIONS_BUT_CONTRIBUTE)
+	float leps;
+	void computeLeps(); // to be called after activations convergence, before optimal weights computation and calcification
+#endif
+
+#ifdef FIXED_PRECISIONS_BUT_CONTRIBUTE
+	float tau_mean, tau_precision;
+#endif
 
 	// for topology
 	float accumulatedEnergy; 
-
+	std::vector<float> connexionEnergies;
 
 
 	Node(int _nChildren, Node** _children);
 
-	~Node();
+	~Node() {};
 
 
 	void XGradientStep();
 
-	// deprecated
-	void WBGradientStep();
 
 
 	void setAnalyticalWX();
@@ -85,10 +85,15 @@ public:
 
 	
 
-	// Sets the MAP ('mean') to the variate, and updates the precision
+	// Sets the MAP ('mean') to the variate, and updates the precision. Also updates the energies ahead of topological operations.
 	void calcifyWB();
 
 
+
+	void pruneUnusedConnexions();
+
+	// For benchmarking purposes
+	void predictiveCodingWxGradientStep();
 
 	// Updates the children's predicted quantities (mu and t) as well, which requires them to be up to date 
 	// relative to the current parameters ! 

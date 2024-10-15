@@ -99,6 +99,9 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < nodes.size() - nClamped; i++)
 		{
+			if (permutation[i] == 794) {
+				int a = 1;
+			}
 			nodes[permutation[i]]->XGradientStep();
 		}
 
@@ -123,14 +126,25 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 	LOG(previousEnergy << "\n\n");
 
 
-	for (int s = 0; s < 1; s++)
+#if defined(DYNAMIC_PRECISIONS) || defined(FIXED_PRECISIONS_BUT_CONTRIBUTE)
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->computeLeps();
+	}
+#endif
+
+#ifdef VANILLA_PREDICTIVE_CODING 
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->predictiveCodingWxGradientStep();
+	}
+#else
+	for (int s = 0; s < 1; s++) // if DYNAMIC_PRECISIONS is enabled, it is not redundant to perform those operations more than once. TODO test.
 	{
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			nodes[i]->setAnalyticalWX();
-#ifdef DYNAMIC_PRECISIONS
 			nodes[i]->setAnalyticalWT();
-#endif
 		}
 	}
 
@@ -138,6 +152,7 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 	{
 		nodes[i]->calcifyWB();
 	}
+#endif
 
 	if (dynamicTopology) topologicalOperations();
 }
@@ -254,6 +269,8 @@ void Network::topologicalOperations()
 			acc += nodes[i]->accumulatedEnergy - KC;
 			nodesOverKC.push_back(nodes[i]);
 		}
+
+		nodes[i]->pruneUnusedConnexions();
 	}
 
 	if (acc > KN) {
@@ -270,10 +287,10 @@ void Network::topologicalOperations()
 		int a = 0;
 		for (int i = 0; i < nodesOverKC.size(); i++)
 		{
-			a += (nodesOverKC[i]->nChildren > 0) ? 1 : 0;
+			a += (nodesOverKC[i]->children.size() > 0) ? 1 : 0;
 			nodesOverKC[i]->inParentsListIDs.push_back(i);
 			nodesOverKC[i]->parents.push_back(newNode);
-			nodesOverKC[i]->accumulatedEnergy = 0;
+			nodesOverKC[i]->accumulatedEnergy = 0.f;
 			nodesOverKC[i]->computeLocalQuantities();
 		}
 		LOGL(a);

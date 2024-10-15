@@ -9,7 +9,10 @@ extern thread_local std::uniform_real_distribution<float> Udistribution;
 extern thread_local std::uniform_int_distribution<uint32_t> UIdistribution;
 extern thread_local std::normal_distribution<float> Ndistribution;
 
+// Uniform real distribution in [0, 1]
 #define UNIFORM_01 Udistribution(generator)
+
+// Normal distribution with mu=1 sigma^2=1
 #define NORMAL_01 Ndistribution(generator)
 
 
