@@ -57,6 +57,10 @@ Network::Network(int _datapointSize, int _labelSize, int nLayers, int* sizes) :
 		{
 			nodes[i]->computeLocalQuantities();
 		}
+
+		for (int j = 0; j < sizes[0]; j++) {
+			nodes[j]->localXReg = 0.f; // no regularisation for the observations.
+		}
 	}
 	else 
 	{
@@ -66,6 +70,7 @@ Network::Network(int _datapointSize, int _labelSize, int nLayers, int* sizes) :
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			nodes[i] = new Node(0, nullptr);
+			nodes[i]->localXReg = 0.f; // no regularisation for the observations.
 		}
 	}
 }
@@ -94,15 +99,16 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++) 
 	{
-		LOG(previousEnergy);
+		//LOG(previousEnergy);
 
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < nodes.size() - nClamped; i++)
 		{
-			if (permutation[i] == 794) {
-				int a = 1;
-			}
+#ifdef ANALYTICAL_X
+			nodes[permutation[i]]->analyticalXUpdate();
+#else
 			nodes[permutation[i]]->XGradientStep();
+#endif 
 		}
 
 #ifndef ASYNCHRONOUS_UPDATES
@@ -123,7 +129,7 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		float currentEnergy = computeTotalActivationEnergy();
 		previousEnergy = currentEnergy;
 	}
-	LOG(previousEnergy << "\n\n");
+	//LOG(previousEnergy << "\n\n");
 
 
 #if defined(DYNAMIC_PRECISIONS) || defined(FIXED_PRECISIONS_BUT_CONTRIBUTE)
@@ -164,29 +170,28 @@ void Network::evaluate(float* _datapoint, int nSteps)
 
 	int nClamped = datapointSize;
 
-#ifdef RANDOM_UPDATE_ORDER
+
 	std::vector<int> permutation(nodes.size() - nClamped);
 	for (int i = nClamped; i < nodes.size(); i++) permutation[i - nClamped] = i;
-#endif 
+
 	
 
 	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++)
 	{
-		LOG(previousEnergy);
+		//LOG(previousEnergy);
 
-#ifdef RANDOM_UPDATE_ORDER
+
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < nodes.size() - nClamped; i++)
 		{
+#ifdef ANALYTICAL_X
+			nodes[permutation[i]]->analyticalXUpdate();
+#else
 			nodes[permutation[i]]->XGradientStep();
+#endif 
 		}
-#else 
-		for (int i = nClamped; i < nodes.size(); i++)
-		{
-			nodes[i]->XGradientStep();
-		}
-#endif
+
 	
 
 #ifndef ASYNCHRONOUS_UPDATES
@@ -207,7 +212,7 @@ void Network::evaluate(float* _datapoint, int nSteps)
 		float currentEnergy = computeTotalActivationEnergy();
 		previousEnergy = currentEnergy;
 	}
-	LOG(previousEnergy);
+	//LOG(previousEnergy);
 
 	for (int i = 0; i < labelSize; i++)
 	{
@@ -220,16 +225,17 @@ void Network::evaluate(float* _datapoint, int nSteps)
 float Network::computeTotalActivationEnergy()
 {
 	float E2 = 0.f;
-	float Elog = 0.f;
+	//float Elog = 0.f;
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		E2 += nodes[i]->epsilon * nodes[i]->epsilon * nodes[i]->tau;
-		Elog += - logf(nodes[i]->tau); 
+		E2 += nodes[i]->epsilon * nodes[i]->epsilon; // *nodes[i]->tau;
+		//Elog += - logf(nodes[i]->tau); 
 		// + constants
 	}
 
-	return (E2 + Elog) * .5f;
+	//return (E2 + Elog) * .5f;
+	return E2 * .5f;
 }
 
 void Network::setActivities(float* _datapoint, float* _label)
@@ -266,7 +272,7 @@ void Network::topologicalOperations()
 	for (int i = 0; i < nodes.size(); i++)
 	{
 		if (nodes[i]->accumulatedEnergy > KC) {
-			acc += nodes[i]->accumulatedEnergy - KC;
+			acc += sqrtf(nodes[i]->accumulatedEnergy - KC);
 			nodesOverKC.push_back(nodes[i]);
 		}
 

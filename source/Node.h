@@ -25,6 +25,7 @@ public:
 	static float energyDecay;
 	static float connexionEnergyThreshold;
 
+	float localXReg; // set at 0 for observation nodes by the parent network, xReg otherwise
 
 	std::vector<Node*> children;
 	std::vector<Node*> parents;
@@ -77,6 +78,7 @@ public:
 
 	void XGradientStep();
 
+	void analyticalXUpdate();
 
 
 	void setAnalyticalWX();

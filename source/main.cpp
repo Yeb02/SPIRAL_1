@@ -16,8 +16,8 @@ int main()
 	float** testShuffledLabels = nullptr;
 
 	// one and only one must be set to  true
-	bool useMNIST = false;
-	bool testRetrocausal = true;
+	bool useMNIST = true;
+	bool testRetrocausal = false;
 	if (useMNIST)
 	{
 		datapointS = 28 * 28;
@@ -31,28 +31,37 @@ int main()
 		float** trainLabels = read_mnist_labels("MNIST\\train-labels-idx1-ubyte", trainSetSize);
 		float** trainDatapoints = read_mnist_images("MNIST\\train-images-idx3-ubyte", trainSetSize);
 
-		auto [trainShuffledPoints, trainShuffledLabels] = create_batches(trainDatapoints, trainLabels, trainSetSize);
-		auto [testShuffledPoints, testShuffledLabels] = create_batches(testDatapoints, testLabels, testSetSize);
+		auto [a1, a2] = create_batches(trainDatapoints, trainLabels, trainSetSize);
+		trainShuffledPoints = a1;
+		trainShuffledLabels = a2;
+		auto [b1, b2] = create_batches(testDatapoints, testLabels, testSetSize);
+		testShuffledPoints = b1;
+		testShuffledLabels = b2;
 	}
 	else if (testRetrocausal)
 	{
-		datapointS = 1;
-		labelS = 2;
+		// when datapoint=1 is observed, the most likely underlying cause is c=1, which is undecisive regarding the label. Therefore it is a better idea to
+		// infer c=0 that lets us conclude on the value of D
+		datapointS = 1; 
+
+		labelS = 1;
 
 		testSetSize = 10000;
 		trainSetSize = 10000;
 
 
 		int s = datapointS + labelS;
+		const float t=.5f, u=.5f, v=.7f, a=.55f, b=.95f; 
 
 		trainShuffledPoints = new float* [trainSetSize];
 		trainShuffledLabels = new float* [trainSetSize];
 		float* trainData = new float[s * trainSetSize];
 		for (int i = 0; i < trainSetSize; i++) 
 		{
-			trainData[s * i] = (UNIFORM_01 > .5f) ? 1.f : -1.f;
-			trainData[s * i + 1] = (trainData[s * i] == -1.f) ? 1.f : ((UNIFORM_01 > .5f) ? 1.f : -1.f);
-			trainData[s * i + 2] = (trainData[s * i] == 1.f) ? 1.f : ((UNIFORM_01 > .5f) ? 1.f : -1.f);
+			float c = (UNIFORM_01 < t) ? 0.f : 1.f; // p(C=0) = t
+			trainData[s * i] = (UNIFORM_01 < (c*v + (1.f-c)*u)) ? 1.f : 0.f; // p(G=1|C=0) = u, p(G=1|C=1) = v
+			trainData[s * i + 1] = (UNIFORM_01 < (c*a + (1.f-c)*b)) ? 1.f : 0.f; // p(D=1|C=0) = b, p(D=1|C=1) = a
+	
 
 			trainShuffledPoints[i] = trainData + s * i;
 			trainShuffledLabels[i] = trainData + s * i + datapointS;
@@ -63,9 +72,9 @@ int main()
 		float* testData = new float[s * testSetSize];
 		for (int i = 0; i < testSetSize; i++)
 		{
-			testData[s * i] = (UNIFORM_01 > .5f) ? 1.f : -1.f;
-			testData[s * i + 1] = (testData[s * i] == -1.f) ? 1.f : ((UNIFORM_01 > .5f) ? 1.f : -1.f);
-			testData[s * i + 2] = (testData[s * i] == 1.f) ? 1.f : ((UNIFORM_01 > .5f) ? 1.f : -1.f);
+			float c = (UNIFORM_01 < t) ? 0.f : 1.f; // p(C=0) = t
+			testData[s * i] = (UNIFORM_01 < (c * v + (1.f - c) * u)) ? 1.f : 0.f; // p(G=1|C=0) = u, p(G=1|C=1) = v
+			testData[s * i + 1] = (UNIFORM_01 < (c * a + (1.f - c) * b)) ? 1.f : 0.f; // p(D=1|C=0) = b, p(D=1|C=1) = a
 
 			testShuffledPoints[i] = testData + s * i;
 			testShuffledLabels[i] = testData + s * i + datapointS;
@@ -73,8 +82,9 @@ int main()
 	}
 
 
+	constexpr bool dynamicTopology = false;
 
-	Node::xlr = .1f;
+	Node::xlr = .8f;
 
 	Node::wxPriorStrength = 1.0f;
 	Node::wtPriorStrength = 1.0f;
@@ -82,28 +92,40 @@ int main()
 	Node::observationImportance = 1.0f;
 	Node::certaintyDecay = .01f;
 
-	Node::energyDecay = .025f;
-	Node::connexionEnergyThreshold = 10.f;
+	Node::energyDecay = .01f;
+	Node::connexionEnergyThreshold = 1.f;
 		
-	Node::xReg  = .05f;   //0.15f taus fixés topo fixée   // TODO remove xreg from observation nodes
-	Node::wxReg = .001f; //0.05f taus fixés topo fixée
+	Node::xReg  = .1f;   //0.15f taus fixés topo fixée   
+	Node::wxReg = .05f;  //0.05f taus fixés topo fixée
 	Node::wtReg = .05f;
 
-	
-	constexpr bool dynamicTopology = false; 
+
+	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
+	int nTestSteps = 4;
+
 #ifdef DYNAMIC_PRECISIONS // TODO check that good values for these parameters still vary wildly if DYNAMIC_PRECISIONS is switched
 	Network::KC = 4.f;
 	Network::KN = 50.f;
 #else
-	Network::KC = 12.f;
-	Network::KN = 100.f;
+	Network::KC = 15.f;
+	Network::KN = 500.f;
+#endif
+
+#ifdef VANILLA_PREDICTIVE_CODING
+	Node::xlr = .1f;
+	Node::xReg = .0f;  
+	Node::wxReg = .00f; 
+	nTrainSteps = 10; 
+	nTestSteps = 10;
 #endif
 
 	// C++ is really stupid sometimes
-	const int _nLayers = 4;
-	int _sizes[_nLayers + 2] = {0, datapointS + labelS, 20, 15, 10, 0};
+	//const int _nLayers = 5;
+	//int _sizes[_nLayers + 2] = {0, datapointS + labelS, 50, 25, 15, 5, 0};
+	const int _nLayers = 2;
+	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 30, 0 };
 	/*const int _nLayers = 2;
-	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 10, 0 };*/
+	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 3, 0 };*/
 
 
 	int nLayers = _nLayers;
@@ -114,11 +136,8 @@ int main()
 		sizes = nullptr;
 	}
 		
-	Network nn(datapointS, labelS, nLayers, sizes);
 
-	int nTrainSteps = 10; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
-	int nTestSteps = 10;
-	int nTests = 1000;
+	Network nn(datapointS, labelS, nLayers, sizes);
 	
 	// one and only one must be set to  true
 	bool onePerClass = false;
@@ -137,9 +156,10 @@ int main()
 		}
 	}
 	else if (onlineRandom){
-		for (int i = 0; i < 1000; i++)
+		for (int i = 0; i < 500; i++)
 		{
 			nn.learn(trainShuffledPoints[i], trainShuffledLabels[i], nTrainSteps);
+			if (i % 100 == 99) LOGL("Step " + std::to_string(i));
 		}
 	}
 	else if (timeDependancy){
@@ -167,6 +187,7 @@ int main()
 		}
 	}
 
+	int nTests = 1000;
 	if (timeDependancy) {
 		int nCorrects = 0;
 		float* output = nn.output;
@@ -217,24 +238,19 @@ int main()
 	}
 	else if (testRetrocausal) 
 	{
+		nTests = 100;
 		float* output = nn.output;
 		float avgMSE = .0f;
-		for (int i = 0; i < 1000; i++)
+		for (int i = 0; i < nTests; i++)
 		{
 			nn.evaluate(testShuffledPoints[i], nTestSteps);
-			float MSE_loss = .0f;
-			for (int j = 0; j < labelS; j++)
-			{
-				MSE_loss += powf(output[j] - testShuffledLabels[i][j], 2.0f);
-			}
 			LOG("\n");
-			LOG(testShuffledLabels[i][0]);
-			LOG(testShuffledLabels[i][1]);
-			LOG(testShuffledLabels[i][2]);
-			LOGL("\n" + std::to_string(MSE_loss) + "\n");
-			avgMSE += MSE_loss;
+			for (int j = 0; j < datapointS; j++) LOG(testShuffledPoints[i][j]);
+			for (int j = 0; j < labelS; j++) LOG(testShuffledLabels[i][j]);
+			LOG("\n");
+			for (int j = 0; j < labelS; j++) LOG(output[j]);
+			LOGL("\n");
 		}
-		LOGL("\n\n\n" + std::to_string(avgMSE / (float)1000));
 	}
 	else {
 		int nCorrects = 0;
@@ -243,7 +259,7 @@ int main()
 		{
 			nn.evaluate(testShuffledPoints[i], nTestSteps);
 
-			LOG("\n");
+			//LOG("\n");
 
 
 			float MSE_loss = .0f;
@@ -252,7 +268,7 @@ int main()
 				MSE_loss += powf(output[j] - testShuffledLabels[i][j], 2.0f);
 			}
 			int isCorrect = isCorrectAnswer(output, testShuffledLabels[i]);
-			LOGL(isCorrect << " " << MSE_loss << "\n");
+			//LOGL(isCorrect << " " << MSE_loss << "\n");
 			nCorrects += isCorrect;
 		}
 		LOGL("\n" << (float)nCorrects / (float)nTests);

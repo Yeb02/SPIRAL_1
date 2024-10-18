@@ -1,4 +1,5 @@
 #include "Node.h"
+#include <algorithm>
 
 // Recommended values:
 
@@ -17,6 +18,8 @@ float Node::xReg = .01f;
 float Node::wxReg = .01f;
 float Node::wtReg = .01f;
 
+constexpr float a = -1.0f;
+constexpr float b = 1.0f;
 
 
 Node::Node(int _nChildren, Node** _children)
@@ -28,7 +31,7 @@ Node::Node(int _nChildren, Node** _children)
 	children.resize(_nChildren);
 	std::copy(_children, _children + _nChildren, children.data());
 
-	bx_mean = NORMAL_01 * .1f;
+	bx_mean = NORMAL_01 * .01f;
 	bx_precision = wxPriorStrength;
 	bx_variate = bx_mean;
 
@@ -37,7 +40,7 @@ Node::Node(int _nChildren, Node** _children)
 	wx_variates.resize(_nChildren);
 
 	std::fill(wx_precisions.begin(), wx_precisions.end(), wxPriorStrength);
-	for (int i = 0; i < _nChildren; i++) wx_means[i] = NORMAL_01 * .1f;
+	for (int i = 0; i < _nChildren; i++) wx_means[i] = NORMAL_01 * .01f;
 	wx_variates.assign(wx_means.begin(), wx_means.end());
 
 	mu = bx_mean;
@@ -78,36 +81,46 @@ Node::Node(int _nChildren, Node** _children)
 	tau = 1.0f;
 #endif
 
+	localXReg = xReg;
+
 	computeLocalQuantities();
 }
 
 
 void Node::XGradientStep() 
 {
-	float grad = (epsilon + x * xReg) * tau;
-	//float grad = epsilon * tau + x * xReg; // and H
+	float grad = (epsilon + x * localXReg) * tau;
+
+
 #ifdef TANH
-	float fprime = 1.f - fx * fx;			   
-#else // quasiSigmoide
-	float fprime = .5f - 2.f * powf(fx - .5f, 2.f); 
+	float fprime = 1.f - fx * fx;
+#elif defined(QSIGMOIDE)
+	float fprime = .5f - 2.f * powf(fx - .5f, 2.f);
+#elif defined(ID)
+	float fprime = 1.0f;
 #endif
+
+
 	float grad_acc = .0f;
 
-	float H = tau * (1.f + xReg);
-	//float H = tau + xReg; // and grad
+	float H = tau * (1.f + localXReg);
 	
 	for (int k = 0; k < children.size(); k++)
 	{
 		Node& c = *children[k];
 
 		grad_acc += - c.tau * c.epsilon * wx_variates[k];
-
 		float fpw = wx_variates[k] * fprime;
+
+
 #ifdef TANH
 		float hk = c.tau * fpw * (fpw + 2 * c.epsilon * fx);
-#else // quasiSigmoide
+#elif defined(QSIGMOIDE)
 		float hk = c.tau * fpw * (fpw + 4 * c.epsilon * (fx - .5f));
+#elif defined(ID)
+		float hk = c.tau * fpw * fpw;
 #endif
+
 		
 #ifdef NO_SECOND_ORDER
 		// no operation needed
@@ -126,6 +139,43 @@ void Node::XGradientStep()
 #endif
 
 	x -= xlr * grad / H;
+
+	float deltaFX = F(x) - fx;
+	fx += deltaFX;
+
+#ifdef ASYNCHRONOUS_UPDATES
+	epsilon = x - mu;
+
+	for (int k = 0; k < children.size(); k++)
+	{
+		Node& c = *children[k];
+
+		c.mu += deltaFX * wx_variates[k];
+
+#ifdef DYNAMIC_PRECISIONS
+		c.t += deltaFX * wt_variates[k];
+#endif
+
+		c.computeLocalQuantities();
+	}
+#endif 
+}
+
+
+void Node::analyticalXUpdate()
+{
+	float stvw = .0f, stw2=.0f;
+	for (int i = 0; i < children.size(); i++)
+	{
+		float tw = children[i]->tau * wx_variates[i];
+		stw2 += tw * wx_variates[i];
+		stvw += tw * (children[i]->epsilon + wx_variates[i] * fx);
+	}
+
+	float xstar = (tau * mu + stvw) / (tau + stw2 + xReg);
+	xstar = F(xstar);
+	x += (xstar - x) * xlr;
+
 
 	float deltaFX = F(x) - fx;
 	fx += deltaFX;
@@ -215,16 +265,28 @@ void Node::setAnalyticalWT()
 	t = (s2 + m * s1) / (1.f + s1);
 	tau = expf(t);
 
-	float ambt = m - t;
-	bx_variate = ambt / bx_precision + bx_mean;
+	bx_variate = (m - t) / bx_precision + bx_mean;
 	for (int i = 0; i < parents.size(); i++)
 	{
 		int id = inParentsListIDs[i];
 		float fi = parents[i]->fx;
 		float tau_i = parents[i]->wt_precisions[id];
 
-		parents[i]->wt_variates[id] = (ambt*fi + tau_i * parents[i]->wt_means[id]) / (tau_i + wtReg * REGWT);
+		parents[i]->wt_variates[id] = ( (m - t) * fi + tau_i * parents[i]->wt_means[id]) / (tau_i + wtReg * REGWT);
 	}
+#endif
+
+#ifdef FIXED_PRECISIONS_BUT_CONTRIBUTE
+	float r = leps;
+	if (children.size() != 0) {
+		for (int i = 0; i < children.size(); i++)
+		{
+			r += children[i]->leps;
+		}
+	}
+	float m = leps - r / (float)(children.size() + 1);
+
+	tau = expf((tau_mean * tau_precision + m) / (tau_precision + 1.0f));
 #endif
 }
 
@@ -259,18 +321,8 @@ void Node::calcifyWB()
 
 
 #ifdef FIXED_PRECISIONS_BUT_CONTRIBUTE
-	float r = leps;
-	if (children.size() != 0) {
-		for (int i = 0; i < children.size(); i++)
-		{
-			r += children[i]->leps;
-		}
-}
-	float m = leps - r / (float)(children.size() + 1);
-
-	tau_mean = (tau_mean * tau_precision + m) / (tau_precision + 1.0f);
 	tau_precision = tau_precision * (1.0f - certaintyDecay) + observationImportance;
-	tau = expf(tau_mean);
+	tau_mean = logf(tau);
 #endif
 }
 
@@ -297,7 +349,7 @@ void Node::pruneUnusedConnexions()
 #endif
 
 			// the child that will be moved to the i-th position in the children vector.
-			for (int j = 0; j < children[nCm1]->parents.size(); i++)
+			for (int j = 0; j < children[nCm1]->parents.size(); j++)
 			{
 				if (children[nCm1]->parents[j] == this) [[unlikely]]
 				{
@@ -308,7 +360,7 @@ void Node::pruneUnusedConnexions()
 
 			// the child that "this" is being disconnecting from
 			int cinpm1 = (int)children[i]->parents.size() - 1;
-			for (int j = 0; j < cinpm1+1; i++)
+			for (int j = 0; j < cinpm1+1; j++)
 			{
 				if (children[i]->parents[j] == this) [[unlikely]] 
 				{
@@ -329,7 +381,7 @@ void Node::pruneUnusedConnexions()
 
 	if (nCm1 + 1 != children.size()) [[unlikely]]
 	{
-		nCm1++; // = new nChildren.
+		nCm1++; // = the new nChildren.
 		wx_variates.resize(nCm1);
 		wx_means.resize(nCm1);
 		wx_precisions.resize(nCm1);
@@ -341,9 +393,9 @@ void Node::pruneUnusedConnexions()
 		wt_precisions.resize(nCm1);
 #endif
 
-		LOG("\nRemoved");
-		LOG((int)children.size() - nCm1);
-		LOGL("existing connexions.");
+		//LOG("\nRemoved");
+		//LOG((int)children.size() - nCm1);
+		//LOGL("existing connexions.");
 
 		children.resize(nCm1);
 	}
