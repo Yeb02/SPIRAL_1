@@ -1,115 +1,80 @@
 #include "ANode.h"
+#include <algorithm>
+#include <limits>
+
 
 // Recommended values:
-
-float ANode::xlr = .7f;
-
-float ANode::xReg = .05f;
-float ANode::wReg = .05f;
+float ANode::wReg = 1.0f;
 
 float ANode::wPriorStrength = 1.0f;
+
 
 float ANode::observationImportance = 1.0f;
 float ANode::certaintyDecay = 1.0f;
 
+float ANode::xReg = 1.0f;
 
 
-ANode::ANode(int _nChildren, ANode** _children) :
-	nChildren(_nChildren)
+ANode::ANode(Assembly* _parentAssembly) : parentAssembly(_parentAssembly)
 {
+
+	parents.resize(0); 
+	inParentsListIDs.resize(0); 
+	children.resize(0);
+
+
 	
+	nPossibleActivations = 1.0f;
+	nActivations = nPossibleActivations * parentAssembly->targetFrequency;
 
-	children = new ANode*[nChildren];
-	std::copy(_children, _children + nChildren, children);
-
-	nParents = 0;
-	parents.resize(0); // for completeness
-	inParentsListIDs.resize(0); // for completeness
-
-	b_mean = NORMAL_01 * .05f;
+	b_mean = NORMAL_01 * .01f + parentAssembly->targetFrequency;
 	b_precision = wPriorStrength;
 	b_variate = b_mean;
 
-	w_means = new float[nChildren];
-	w_precisions = new float[nChildren];
-	w_variates = new float[nChildren];
+	w_means.resize(0);
+	w_precisions.resize(0);
+	w_variates.resize(0);
 
-	std::fill(w_precisions, w_precisions + nChildren, wPriorStrength);
-	for (int i = 0; i < nChildren; i++) w_means[i] = NORMAL_01 * .05f;
-	std::copy(w_means, w_means + nChildren, w_variates);
+	mu = b_mean;
+	x = 0;
 
-	x = NORMAL_01 * .05f;
-	fx = std::clamp(x, .0f, 1.f);
+	localXReg = xReg;
 
-	transmitPredictions();
-}
-
-ANode::~ANode()
-{
-	delete[] children;
-	delete[] w_variates;
-	delete[] w_means;
-	delete[] w_precisions;
+	isFree = false;
 }
 
 
-
-
-void ANode::addParent(ANode* parent, int inParentsListID) 
+void ANode::updateActivation()
 {
-	parents.push_back(parent);
-	inParentsListIDs.push_back(inParentsListID);
-}
+	float deltaE = ;
 
-void ANode::registerInitialParents(ANode** _parents, int* _inParentsListIDs, int _nParents)
-{
-	nParents = _nParents;
-	parents.resize(nParents);
-	inParentsListIDs.resize(nParents);
-
-	std::copy(_inParentsListIDs, _inParentsListIDs + nParents, inParentsListIDs.data());
-	std::copy(_parents, _parents + nParents, parents.data());
-}
-
-
-
-void ANode::updateActivation() 
-{
-	float swv = .0f, sw2 = .0f;
-	for (int i = 0; i < nChildren; i++) 
+	for (int k = 0; k < children.size(); k++)
 	{
-		swv += w_variates[i] * (children[i]->epsilon + w_variates[i] * fx);
-		sw2 += w_variates[i] * w_variates[i];
+		ANode& c = *children[k];
+		if (c.isFree) [[unlilely]] {continue; }
+
+
+
+	}
+	float newX;
+
+	if (x == newX) { return; } // TODO [[likely]] ?
+
+	float delta = newX - x;
+	parentAssembly->nActiveNodes += delta;
+
+	for (int k = 0; k < children.size(); k++)
+	{
+		children[k]->mu += delta * w_variates[k];
 	}
 
-	float xstar = (mu + swv) / (1.f + sw2 + xReg);
-	float clmpxstar = std::clamp(xstar, .0f, 1.f);
-
-	if (xstar != clmpxstar)  // x not in [0, 1], so saturated. As branchless as possible.
-	{
-		
-		xstar = (((mu - 1.f) * clmpxstar - mu * (1.f - clmpxstar)) > 0.f) ?
-			mu / (1.f + xReg) :
-			clmpxstar;
-	}
-	x = x * (1.f - xlr) + xstar * xlr;
-
-	float newfx = std::clamp(x, .0f, 1.f);
-	if (newfx != fx) // TODO monitor performance, branch misprediction may be more costly than the few operations we avoid
-	{
-		float deltafx = newfx - fx;
-		fx = newfx;
-		for (int i = 0; i < nChildren; i++)
-		{
-			children[i]->mu += w_variates[i] * deltafx;
-			children[i]->epsilon = children[i]->x - children[i]->mu;
-		}
-	}
 }
 
 
-void ANode::updateIncomingWeights() 
+
+void ANode::setTemporaryWB()
 {
+	//if ((x == .0f) && !updateWIfXis0) { return; };
 
 	float s1 = 1.0f / b_precision;
 	float s2 = b_mean;
@@ -117,69 +82,62 @@ void ANode::updateIncomingWeights()
 
 	for (int i = 0; i < parents.size(); i++)
 	{
-		int id = inParentsListIDs[i];
-		float fi = parents[i]->fx;
-		float t1 = fi / (parents[i]->w_precisions[id] + wReg * REGWX);
+		
+		float xi = parents[i]->x;
+		if (xi == 0.f)  {continue;}  // TODO faster not to take the branch and remove the if ? [[likely]] ?
 
-		s1 += fi * t1;
-		s2 += fi * parents[i]->w_means[id] * parents[i]->w_precisions[id];
+		int id = inParentsListIDs[i];
+		float t1 = xi / (parents[i]->w_precisions[id] + wReg);
+
+		s1 += xi * t1;
+		s2 += t1 * parents[i]->w_means[id] * parents[i]->w_precisions[id];
 	}
 
 
-	epsilon = (x - s2) / (1.f + s1);
+	float epsilon = (x - s2) / (1.f + s1);
 	mu = x - epsilon;
 
 
 	b_variate = epsilon / b_precision + b_mean;
 	for (int i = 0; i < parents.size(); i++)
 	{
+		float xi = parents[i]->x;
+		if (xi == 0.f) { continue; }  // TODO [[likely]] ?
+
 		int id = inParentsListIDs[i];
-		float fi = parents[i]->fx;
 		float tau_i = parents[i]->w_precisions[id];
 
-		parents[i]->w_variates[id] = (epsilon * fi + tau_i * parents[i]->w_means[id]) / (tau_i + wReg * REGWX);
+		parents[i]->w_variates[id] = (epsilon * xi + tau_i * parents[i]->w_means[id]) / (tau_i + wReg);
 	}
 }
 
 
-void ANode::calcifyIncomingWeights() 
+
+void ANode::calcifyWB()
 {
-	for (int k = 0; k < nParents; k++)
-	{ 
-		float epsw = parents[k]->w_variates[inParentsListIDs[k]] - parents[k]->w_means[inParentsListIDs[k]];
-		float precw = parents[k]->w_precisions[inParentsListIDs[k]];
-		float fxk2 = parents[k]->fx * parents[k]->fx; // measured positive impact.
+	//if ((x == .0f) && !updateWIfXis0) { return; };
 
-		float decay = std::max(expf( - certaintyDecay * powf(epsw, 2.0f) * precw), .8f);
-		//float decay = std::max(expf( - certaintyDecay * abs(epsw) * sqrtf(precw)), .8f);
-		
-		parents[k]->w_precisions[inParentsListIDs[k]] = precw * decay + observationImportance * fxk2;
-
-		parents[k]->w_means[inParentsListIDs[k]] = parents[k]->w_variates[inParentsListIDs[k]];
+	for (int k = 0; k < children.size(); k++)
+	{
+		// TODO faster with a branch ?
+		w_precisions[k] = w_precisions[k] * (1.0f - certaintyDecay * x) + observationImportance + x;
+		w_means[k] = w_variates[k];
 	}
 
-	float decay = std::max(expf(-certaintyDecay * powf(b_variate - b_mean, 2.0f) * b_precision), .8f);
-	//float decay = std::max(expf(-certaintyDecay * abs(b_variate - b_mean) * sqrtf(b_precision)), .8f);
-
-	b_precision = b_precision * decay + observationImportance;
-
+	b_precision = b_precision * (1.0f - certaintyDecay) + observationImportance;
 	b_mean = b_variate;
 }
 
 
 
-
 void ANode::setActivation(float newX)
 {
-	float deltaFX = std::clamp(newX, .0f, 1.f) - fx;
-	fx += deltaFX;
+	float delta = newX - x;
 	x = newX;
-	epsilon = x - mu;
-
-	for (int k = 0; k < nChildren; k++)
+	
+	for (int k = 0; k < children.size(); k++)
 	{
-		children[k]->mu += deltaFX * w_variates[k];
-		children[k]->epsilon -= deltaFX * w_variates[k];
+		children[k]->mu += delta * w_variates[k];
 	}
 }
 
@@ -190,9 +148,31 @@ void ANode::prepareToReceivePredictions()
 
 void ANode::transmitPredictions()
 {
-	for (int k = 0; k < nChildren; k++)
+	for (int k = 0; k < children.size(); k++)
 	{
-		children[k]->mu += fx * w_variates[k];
-		children[k]->epsilon -= fx * w_variates[k];
+		children[k]->mu += x * w_variates[k];
+	}
+}
+
+
+void ANode::addParents(ANode** newParents, int* newInParentIDs, int nNewParents)
+{
+	parents.insert(parents.end(), newParents, newParents + nNewParents);
+	inParentsListIDs.insert(inParentsListIDs.end(), newInParentIDs, newInParentIDs + nNewParents);
+}
+
+void ANode::addChildren(ANode** newChildren, int nNewChildren)
+{
+	children.insert(children.end(), newChildren, newChildren + nNewChildren);
+
+	w_variates.resize(children.size());
+	w_means.resize(children.size());
+	w_precisions.resize(children.size());
+
+	for (int i = children.size() - nNewChildren; i = children.size(); i++)
+	{
+		w_variates[i] = .01f * NORMAL_01;
+		w_means[i] = w_variates[i];
+		w_precisions[i] = wPriorStrength;
 	}
 }

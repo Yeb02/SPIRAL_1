@@ -84,7 +84,7 @@ int main()
 
 	constexpr bool dynamicTopology = false;
 
-	Node::xlr = .8f;
+	Node::xlr = 1.0f;
 
 	Node::wxPriorStrength = 1.0f;
 	Node::wtPriorStrength = 1.0f;
@@ -95,8 +95,8 @@ int main()
 	Node::energyDecay = .01f;
 	Node::connexionEnergyThreshold = 1.f;
 		
-	Node::xReg  = .1f;   //0.15f taus fixés topo fixée   
-	Node::wxReg = .05f;  //0.05f taus fixés topo fixée
+	Node::xReg  = .1f;   
+	Node::wxReg = .05f;  
 	Node::wtReg = .05f;
 
 
@@ -120,12 +120,12 @@ int main()
 #endif
 
 	// C++ is really stupid sometimes
-	//const int _nLayers = 5;
-	//int _sizes[_nLayers + 2] = {0, datapointS + labelS, 50, 25, 15, 5, 0};
-	const int _nLayers = 2;
-	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 30, 0 };
-	/*const int _nLayers = 2;
-	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 3, 0 };*/
+	/*const int _nLayers = 5;
+	int _sizes[_nLayers + 2] = {0, datapointS + labelS, 50, 25, 15, 5, 0};*/
+	const int _nLayers = 3;
+	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 7, 0 };
+	//const int _nLayers = 2;
+	//int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 3, 0 };
 
 
 	int nLayers = _nLayers;
@@ -187,9 +187,19 @@ int main()
 		}
 	}
 
+	if (dynamicTopology)
+	{
+		for (int j = labelS+datapointS; j < nn.getNNodes(); j++)
+		{
+			LOGL("p " << nn.nodes[j]->parents.size() << "   c " << nn.nodes[j]->children.size());
+		}
+	}
+
+
 	int nTests = 1000;
 	if (timeDependancy) {
-		int nCorrects = 0;
+		int n1Corrects = 0;
+		int n2Corrects = 0;
 		float* output = nn.output;
 		int id = 0;
 		for (int u = 0; u < 500; u++) { // 10k test datapoints so (500 * 10) < 10000 is safe in expectation
@@ -203,7 +213,7 @@ int main()
 			}
 			int isCorrect = isCorrectAnswer(output, testShuffledLabels[id]);
 			LOGL(isCorrect << " " << MSE_loss << "\n");
-			nCorrects += isCorrect;
+			n1Corrects += isCorrect;
 
 
 			int label = -1;
@@ -230,11 +240,12 @@ int main()
 			}
 			isCorrect = isCorrectAnswer(output, testShuffledLabels[id]);
 			LOGL(isCorrect << " " << MSE_loss << "\n");
-			nCorrects += isCorrect;
+			n2Corrects += isCorrect;
 			id++;
 		}
 
-		LOGL("\n" << (float)nCorrects / (float)nTests);
+		LOGL("\nRdm: " << 2.f * (float)n1Corrects / (float)nTests << ", next: " << 2.f * (float)n2Corrects / (float)nTests);
+		LOGL((float)(n1Corrects + n2Corrects) / (float)nTests);
 	}
 	else if (testRetrocausal) 
 	{
@@ -253,6 +264,7 @@ int main()
 		}
 	}
 	else {
+
 		int nCorrects = 0;
 		float* output = nn.output;
 		for (int i = 0; i < nTests; i++)

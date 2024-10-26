@@ -1,5 +1,6 @@
 #include "Node.h"
 #include <algorithm>
+#include <limits>
 
 // Recommended values:
 
@@ -18,6 +19,7 @@ float Node::xReg = .01f;
 float Node::wxReg = .01f;
 float Node::wtReg = .01f;
 
+// bounds for analytical X update
 constexpr float a = -1.0f;
 constexpr float b = 1.0f;
 
@@ -31,7 +33,12 @@ Node::Node(int _nChildren, Node** _children)
 	children.resize(_nChildren);
 	std::copy(_children, _children + _nChildren, children.data());
 
-	bx_mean = NORMAL_01 * .01f;
+	float initialAmplitude = .01f;
+#ifdef REGXL1
+	initialAmplitude = 1.f / sqrtf((float)(1+_nChildren)); // otherwise keeping the node's value at 0 is the best option at the beginning of learning, and it never changes.
+#endif
+
+	bx_mean = NORMAL_01 * initialAmplitude;
 	bx_precision = wxPriorStrength;
 	bx_variate = bx_mean;
 
@@ -40,7 +47,7 @@ Node::Node(int _nChildren, Node** _children)
 	wx_variates.resize(_nChildren);
 
 	std::fill(wx_precisions.begin(), wx_precisions.end(), wxPriorStrength);
-	for (int i = 0; i < _nChildren; i++) wx_means[i] = NORMAL_01 * .01f;
+	for (int i = 0; i < _nChildren; i++) wx_means[i] = NORMAL_01 * initialAmplitude;
 	wx_variates.assign(wx_means.begin(), wx_means.end());
 
 	mu = bx_mean;
@@ -167,13 +174,23 @@ void Node::analyticalXUpdate()
 	float stvw = .0f, stw2=.0f;
 	for (int i = 0; i < children.size(); i++)
 	{
-		float tw = children[i]->tau * wx_variates[i];
-		stw2 += tw * wx_variates[i];
-		stvw += tw * (children[i]->epsilon + wx_variates[i] * fx);
+		float tiwi = children[i]->tau * wx_variates[i];
+		stw2 += tiwi * wx_variates[i];
+		float vi = children[i]->epsilon + wx_variates[i] * fx;
+		stvw += tiwi * vi;
 	}
 
-	float xstar = (tau * mu + stvw) / (tau + stw2 + xReg);
+#ifdef REGXL1
+	float xstar = (tau * mu + stvw) / (tau + stw2);
 	xstar = F(xstar);
+	float Estar = tau * powf(xstar - mu, 2.0f) + xstar * (xstar * stw2 - 2.f * stvw) + localXReg; // +stv2
+	float E0 = tau * mu * mu; // +stv2
+	xstar = (E0 < Estar) ? 0.f : xstar;
+#else
+	float xstar = (tau * mu + stvw) / (tau + stw2 + localXReg);
+	xstar = F(xstar);
+#endif
+	
 	x += (xstar - x) * xlr;
 
 
@@ -237,6 +254,39 @@ void Node::setAnalyticalWX()
 
 void Node::setAnalyticalWT()
 {
+
+#if defined(DYNAMIC_PRECISIONS) || defined(FIXED_PRECISIONS_BUT_CONTRIBUTE)
+	float r = leps;
+	if (children.size() != 0) {
+		for (int i = 0; i < children.size(); i++)
+		{
+			r += children[i]->leps;
+		}
+	}
+	float m = leps - r / (float)(children.size() + 1);
+
+
+	//float r = leps;
+	//if (children.size() != 0) r = children[INT_0X(children.size())]->leps;
+	//float m = leps - r;
+
+
+	//float r = std::numeric_limits<float>::lowest();
+	//if (children.size() != 0) {
+	//	for (int i = 0; i < children.size(); i++)
+	//	{
+	//		r = std::max(children[i]->leps, r);
+	//	}
+	//}
+	//float m = ((int)children.size() == 0) ? .0f : (leps - r);
+#endif
+
+
+#ifdef FIXED_PRECISIONS_BUT_CONTRIBUTE
+	tau = expf((tau_mean * tau_precision + m) / (tau_precision + 1.0f));
+#endif
+
+
 #ifdef DYNAMIC_PRECISIONS
 	float s1 = 1.0f / bt_precision;
 	float s2 = bt_mean;
@@ -252,16 +302,6 @@ void Node::setAnalyticalWT()
 		s2 += t1 * parents[i]->wt_means[id] * parents[i]->wt_precisions[id];
 	}
 
-	float r = leps;
-	if (children.size() != 0) {
-		for (int i = 0; i < children.size(); i++)
-		{
-			r += children[i]->leps;
-		}
-	}
-	float m = leps - r / (float) (children.size() +1);
-
-
 	t = (s2 + m * s1) / (1.f + s1);
 	tau = expf(t);
 
@@ -274,19 +314,6 @@ void Node::setAnalyticalWT()
 
 		parents[i]->wt_variates[id] = ( (m - t) * fi + tau_i * parents[i]->wt_means[id]) / (tau_i + wtReg * REGWT);
 	}
-#endif
-
-#ifdef FIXED_PRECISIONS_BUT_CONTRIBUTE
-	float r = leps;
-	if (children.size() != 0) {
-		for (int i = 0; i < children.size(); i++)
-		{
-			r += children[i]->leps;
-		}
-	}
-	float m = leps - r / (float)(children.size() + 1);
-
-	tau = expf((tau_mean * tau_precision + m) / (tau_precision + 1.0f));
 #endif
 }
 
@@ -332,10 +359,11 @@ void Node::pruneUnusedConnexions()
 	int nCm1 = (int)children.size() - 1;
 	for (int i = 0; i < nCm1 + 1; i++)
 	{
-		if (connexionEnergies[i] > connexionEnergyThreshold)  // TODO think about the role of abs(w).
+		if (abs(wx_variates[i]) < .05 && wx_precisions[i] > 10.f)
+		//if (connexionEnergies[i] > connexionEnergyThreshold)  
 			[[unlikely]]
 		{
-			// A more efficient approach to deleting a small number of elements in a vector is to swap the deleted element 
+			// The most efficient approach to deleting a small number of elements in a vector is to swap the deleted element 
 			// with the last in the vector and then decrement the vector size. (Avoids costly reindicing and array moves)
 			wx_variates[i] = wx_variates[nCm1];
 			wx_means[i] = wx_means[nCm1];

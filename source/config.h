@@ -9,7 +9,7 @@
 
 //#define DYNAMIC_PRECISIONS  // Do not use until the reason why on the retrocausal task mus/bs are drawn to infinity. Does not happen with FIXED_PRECISIONS_BUT_CONTRIBUTE.
 #ifndef DYNAMIC_PRECISIONS
-#define FIXED_PRECISIONS_BUT_CONTRIBUTE // TODO rethink the formula for m. max of the children's lesp rather than mean ?
+//#define FIXED_PRECISIONS_BUT_CONTRIBUTE 
 #endif
 
 
@@ -40,9 +40,16 @@
 
 #ifdef ANALYTICAL_X
 #undef F
-#define F(x) std::clamp(x, a, b)		 
+#define F(x) std::clamp(x, a, b) // a, b are defined at the top of node.cpp. -1 and 1.
 #endif
 
+
+// for use in the analytical update only. Otherwise L2 reg.
+//#define REGXL1
+
+
+// TODO figure out a way to fit this in the analytical update.
+#define REGWL1
 
 
 // one and only one must be active:
@@ -55,8 +62,12 @@
 #define REGWT (fi * fi)
 
 
+
+
 // Not exactly vanilla topology, as the label and datapoint are still both at the bottom ( TODO an option to test label on top as well )
+// The wlr parameter is in the node::predictiveCodingWxGradientStep() function's definition.
 // Make sure that dynamicTopology is set to false in main !
+
 //#define VANILLA_PREDICTIVE_CODING
 
 #ifdef VANILLA_PREDICTIVE_CODING // Do not modify what is in this #if. Some of the undefined directives are compatible, but this is only for benchmarks so dont bother
