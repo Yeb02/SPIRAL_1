@@ -56,7 +56,7 @@ public:
 
 
 
-	//void pruneUnusedConnexions();
+	//void pruneUnusedConnexions(); // TODO later maybe 
 
 	
 	// Updates the children's mu as well, which requires them to be up to date 

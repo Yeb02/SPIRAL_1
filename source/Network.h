@@ -33,6 +33,11 @@ public:
 	// Should be private:
 	// the first datapointSize nodes correspond to the datapoint, the labelSize next to the label.
 	std::vector<Node*> nodes;
+
+
+	void readyForLearning() {}; // just for interchangability of ANetwork and Network in main.cpp
+	void readyForTesting() {};  // just for interchangability of ANetwork and Network in main.cpp
+
 private:
 
 	int datapointSize, labelSize;

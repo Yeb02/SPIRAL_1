@@ -48,23 +48,23 @@ void ANetwork::learn(float* _datapoint, float* _label, int nSteps)
 {
 	setActivities(_datapoint, _label);
 
-	int nClamped = datapointSize + labelSize;
+	float previousEnergy = computeTotalActivationEnergy();
 
-	//float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++)
 	{
-		//LOG(previousEnergy);
+		LOG(previousEnergy);
 
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < permutation.size(); i++)
 		{
 			nodes[permutation[i]]->updateActivation();
+			//nodes[permutation[i]]->setTemporaryWB();
 		}
 
-		//float currentEnergy = computeTotalActivationEnergy();
-		//previousEnergy = currentEnergy;
+		float currentEnergy = computeTotalActivationEnergy();
+		previousEnergy = currentEnergy;
 	}
-	//LOG(previousEnergy << "\n\n");
+	LOG(previousEnergy << "\n\n");
 
 
 	for (int i = 0; i < nodes.size(); i++)
@@ -83,14 +83,11 @@ void ANetwork::evaluate(float* _datapoint, int nSteps)
 {
 	setActivities(_datapoint, nullptr);
 
+	float previousEnergy = computeTotalActivationEnergy();
 
-	int nClamped = datapointSize;
-
-
-	//float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++)
 	{
-		//LOG(previousEnergy);
+		LOG(previousEnergy);
 
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < permutation.size(); i++)
@@ -98,10 +95,10 @@ void ANetwork::evaluate(float* _datapoint, int nSteps)
 			nodes[permutation[i]]->updateActivation();
 		}
 
-		//float currentEnergy = computeTotalActivationEnergy();
-		//previousEnergy = currentEnergy;
+		float currentEnergy = computeTotalActivationEnergy();
+		previousEnergy = currentEnergy;
 	}
-	//LOG(previousEnergy << "\n\n");
+	LOG(previousEnergy << "\n\n");
 
 
 	for (int i = 0; i < labelSize; i++)
@@ -164,7 +161,7 @@ void ANetwork::readyForLearning() {
 void ANetwork::readyForTesting() {
 	for (int i = datapointSize; i < datapointSize + labelSize; i++) nodes[i]->isFree = true;
 
-	int nClamped = datapointSize;
+	int nClamped = datapointSize + labelSize; // technically, the label nodes are no clamped. But they do not need an update, so we will ignore them.
 	permutation.resize(nodes.size() - nClamped);
 	for (int i = nClamped; i < nodes.size(); i++) permutation[i - nClamped] = i;
 
@@ -186,7 +183,7 @@ void ANetwork::addAssembly(Assembly* assembly)
 
 	nodes.resize(nodes.size() + assembly->nNodes);
 
-	for (int i = nodes.size() - assembly->nNodes; i < nodes.size(); i++)
+	for (int i = (int) nodes.size() - assembly->nNodes; i < nodes.size(); i++)
 	{
 		nodes[i] = new ANode(assemblies[assemblies.size()-1]);
 	}
@@ -198,8 +195,39 @@ void ANetwork::addConnexion(int originID, int destinationID, float p)
 	Assembly* dA = assemblies[destinationID];
 
 
-	if (p == 1) {
+	if (p == 1) { // TODO stupid to still use inParentsIDs in this case, should be a different prepoc directive, but not all assemblies are dense...
+		std::vector<ANode*> children(dA->nNodes);
+		std::vector<ANode*> parents(oA->nNodes);
+		std::vector<int> inParentsIDs(oA->nNodes);
+		
 
+		for (int i = 0; i < oA->nNodes; i++)
+		{
+			int nc = 0;
+			for (int j = 0; j < dA->nNodes; j++)
+			{
+				if (dA == oA && i == j) [[unlikely]] {continue; } // a node can't connect to itself.
+
+				children[nc] = nodes[dA->firstNodeID + j];
+				nc++;
+			}
+
+			nodes[oA->firstNodeID + i]->addChildren(children.data(), nc);
+		}
+
+		for (int i = 0; i < dA->nNodes; i++)
+		{
+			int np = 0;
+			for (int j = 0; j < oA->nNodes; j++)
+			{
+				if (dA == oA && i == j) [[unlikely]] {continue; } // a node can't connect to itself.
+
+				parents[np] = nodes[oA->firstNodeID + j];
+				inParentsIDs[np] = i;
+				np++;
+			}
+			nodes[dA->firstNodeID + i]->addParents(parents.data(), inParentsIDs.data(), np);
+		}
 	}
 	else {
 		std::vector<ANode*> children(dA->nNodes);
@@ -215,6 +243,8 @@ void ANetwork::addConnexion(int originID, int destinationID, float p)
 			for (int j = 0; j < dA->nNodes; j++)
 			{
 				if (UNIFORM_01 < p) {
+					if (dA == oA && i == j) [[unlikely]] {continue; } // a node can't connect to itself.
+
 					children[nc] = nodes[dA->firstNodeID + j];
 					parents[j * oA->nNodes + nNewParents[j]] = nodes[oA->firstNodeID + i];
 					inParentsIDs[j * oA->nNodes + nNewParents[j]] = nc;

@@ -23,6 +23,8 @@ public:
 
 	// p is the connexion probability. The IDs are those in std::vector<Assembly*> assemblies. 
 	// p should not be too close to 1 (i.e. < 0.9)
+	// Nodes can not connect to themselves, but later it should be enforced in a smarter way than simply 
+	// not creating the connexion, for better coalescing. (probably clamp the weight at 0 at all time)
 	void addConnexion(int originID, int destinationID, float p);
 
 	void learn(float* _datapoint, float* _label, int nSteps);
@@ -42,6 +44,9 @@ public:
 
 	// the first assembly corresponds to the datapoint, the second to the label.
 	std::vector<Assembly*> assemblies;
+
+
+	int getNNodes() { return 0; } // just for interchangability of ANetwork and Network in main.cpp
 
 private:
 	std::vector<int> permutation;

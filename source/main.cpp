@@ -1,4 +1,5 @@
 #include "Network.h"
+#include "ANetwork.h"
 #include "MNIST.h"
 
 
@@ -82,69 +83,110 @@ int main()
 	}
 
 
+
 	constexpr bool dynamicTopology = false;
 
-	Node::xlr = 1.0f;
+//	Node::xlr = 1.0f;
+//	Node::wxPriorStrength = 1.0f;
+//	Node::wtPriorStrength = 1.0f;
+//	Node::observationImportance = 1.0f;
+//	Node::certaintyDecay = .01f;
+//	Node::energyDecay = .01f;
+//	Node::connexionEnergyThreshold = 1.f;
+//	Node::xReg  = .1f;   
+//	Node::wxReg = .05f;  
+//	Node::wtReg = .05f;
+//
+//	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
+//	int nTestSteps = 4;
+//
+//#ifdef DYNAMIC_PRECISIONS // TODO check that good values for these parameters still vary wildly if DYNAMIC_PRECISIONS is switched
+//	Network::KC = 4.f;
+//	Network::KN = 50.f;
+//#else
+//	Network::KC = 15.f;
+//	Network::KN = 500.f;
+//#endif
+//
+//#ifdef VANILLA_PREDICTIVE_CODING
+//	Node::xlr = .1f;
+//	Node::xReg = .0f;  
+//	Node::wxReg = .00f; 
+//	nTrainSteps = 10; 
+//	nTestSteps = 10;
+//#endif
+// 
+// 
+// 	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
+//  int nTestSteps = 4;
+//
+//	// C++ is really stupid sometimes
+//	/*const int _nLayers = 5;
+//	int _sizes[_nLayers + 2] = {0, datapointS + labelS, 50, 25, 15, 5, 0};*/
+//	const int _nLayers = 3;
+//	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 7, 0 };
+//	//const int _nLayers = 2;
+//	//int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 3, 0 };
+//
+//	int nLayers = _nLayers;
+//	int* sizes = &(_sizes[1]);
+//	if (dynamicTopology) 
+//	{
+//		nLayers = 0;
+//		sizes = nullptr;
+//	}
+//	Network nn(datapointS, labelS, nLayers, sizes);
 
-	Node::wxPriorStrength = 1.0f;
-	Node::wtPriorStrength = 1.0f;
-
-	Node::observationImportance = 1.0f;
-	Node::certaintyDecay = .01f;
-
-	Node::energyDecay = .01f;
-	Node::connexionEnergyThreshold = 1.f;
-		
-	Node::xReg  = .1f;   
-	Node::wxReg = .05f;  
-	Node::wtReg = .05f;
 
 
-	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
-	int nTestSteps = 4;
 
-#ifdef DYNAMIC_PRECISIONS // TODO check that good values for these parameters still vary wildly if DYNAMIC_PRECISIONS is switched
-	Network::KC = 4.f;
-	Network::KN = 50.f;
-#else
-	Network::KC = 15.f;
-	Network::KN = 500.f;
-#endif
+	ANode::wReg = .05f;
+	ANode::wPriorStrength = 1.f;
+	ANode::observationImportance = 1.0f;
+	ANode::certaintyDecay = .01f;
+	ANode::xReg = .05f;
 
-#ifdef VANILLA_PREDICTIVE_CODING
-	Node::xlr = .1f;
-	Node::xReg = .0f;  
-	Node::wxReg = .00f; 
-	nTrainSteps = 10; 
-	nTestSteps = 10;
-#endif
-
-	// C++ is really stupid sometimes
-	/*const int _nLayers = 5;
-	int _sizes[_nLayers + 2] = {0, datapointS + labelS, 50, 25, 15, 5, 0};*/
-	const int _nLayers = 3;
-	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 7, 0 };
-	//const int _nLayers = 2;
-	//int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 3, 0 };
-
-
-	int nLayers = _nLayers;
-	int* sizes = &(_sizes[1]);
-	if (dynamicTopology) 
+	ANetwork nn(datapointS, labelS);
 	{
-		nLayers = 0;
-		sizes = nullptr;
-	}
-		
+		float target_density = .5f;
+		float density_strength = .1f;
+		float target_freqency = .5f;
+		float freqency_strength = .1f;
+		Assembly* a2 = new Assembly(200, target_density, density_strength, target_freqency, freqency_strength);
+		nn.addAssembly(a2);
+		/*Assembly* a3 = new Assembly(200, target_density, density_strength, target_freqency, freqency_strength);
+		nn.addAssembly(a3);
+		Assembly* a4 = new Assembly(200, target_density, density_strength, target_freqency, freqency_strength);
+		nn.addAssembly(a4);*/
 
-	Network nn(datapointS, labelS, nLayers, sizes);
-	
+		nn.addConnexion(2, 0, .2f);
+		nn.addConnexion(2, 1, 1.f);
+		nn.addConnexion(2, 2, 1.f);
+
+		//nn.addConnexion(0, 2, 1.f);
+		//nn.addConnexion(2, 1, 1.f);
+		//nn.addConnexion(2, 2, .3f);
+
+		//nn.addConnexion(2, 0, 1.f);
+		//nn.addConnexion(3, 2, 1.f);
+		//nn.addConnexion(4, 3, 1.f);
+		//nn.addConnexion(4, 1, 1.f);
+	}
+	int nTrainSteps = 5;
+	int nTestSteps = 5;
+
+
+
+
+
+	nn.readyForLearning();
+
 	// one and only one must be set to  true
 	bool onePerClass = false;
 	bool onlineRandom = true;
 	bool timeDependancy = false;
 	if (onePerClass) {
-		for (int u = 0; u < 5; u++) {
+		for (int u = 0; u < 1; u++) {
 			for (int i = 0; i < 10; i++) {
 				int id = 0;
 				while (trainShuffledLabels[id][i] != 1.0f) {
@@ -156,7 +198,7 @@ int main()
 		}
 	}
 	else if (onlineRandom){
-		for (int i = 0; i < 500; i++)
+		for (int i = 0; i < 100; i++)
 		{
 			nn.learn(trainShuffledPoints[i], trainShuffledLabels[i], nTrainSteps);
 			if (i % 100 == 99) LOGL("Step " + std::to_string(i));
@@ -195,6 +237,7 @@ int main()
 		}
 	}
 
+	nn.readyForTesting();
 
 	int nTests = 1000;
 	if (timeDependancy) {
@@ -271,7 +314,7 @@ int main()
 		{
 			nn.evaluate(testShuffledPoints[i], nTestSteps);
 
-			//LOG("\n");
+			LOG("\n");
 
 
 			float MSE_loss = .0f;
@@ -280,7 +323,7 @@ int main()
 				MSE_loss += powf(output[j] - testShuffledLabels[i][j], 2.0f);
 			}
 			int isCorrect = isCorrectAnswer(output, testShuffledLabels[i]);
-			//LOGL(isCorrect << " " << MSE_loss << "\n");
+			LOGL(isCorrect << " " << MSE_loss << "\n");
 			nCorrects += isCorrect;
 		}
 		LOGL("\n" << (float)nCorrects / (float)nTests);
