@@ -25,7 +25,9 @@ public:
 	static float energyDecay;
 	static float connexionEnergyThreshold;
 
-	float localXReg; // set at 0 for observation nodes by the parent network, xReg otherwise
+	float localXReg; // set at 0 for observation/label nodes by the parent network, xReg otherwise
+
+	bool isFree; // set to true for nodes that must be inferred and do not have children. Typically the label.
 
 	std::vector<Node*> children;
 	std::vector<Node*> parents;
@@ -71,7 +73,7 @@ public:
 	std::vector<float> connexionEnergies;
 
 
-	Node(int _nChildren, Node** _children);
+	Node(int _nChildren, Node** _children, int _nCoParents);
 
 	~Node() {};
 

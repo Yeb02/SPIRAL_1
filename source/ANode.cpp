@@ -69,9 +69,8 @@ void ANode::updateActivation()
 	for (int k = 0; k < children.size(); k++)
 	{
 		ANode& c = *children[k];
-		if (c.isFree) [[unlikely]] {continue; } // more efficient to ignore ?
 
-		deltaE += w_variates[k] * ( (1.f - 2.0f * x) * w_variates[k] * (1.0f + c.localXReg) + 2.0f * (c.localXReg - c.x + c.mu));
+		deltaE += w_variates[k] * ( (1.f - 2.0f * x) * w_variates[k] * (1.0f + c.localXReg) + 2.0f * (c.localXReg * c.mu  -  (c.x - c.mu) ));
 
 	}
 
@@ -91,7 +90,10 @@ void ANode::updateActivation()
 	for (int k = 0; k < children.size(); k++)
 	{
 		children[k]->mu += delta * w_variates[k];
-		if (children[k]->isFree) [[unlikely]] {children[k]->x = children[k]->mu; } // more efficient to ignore ?
+#ifdef FREE_NODES
+		if (children[k]->isFree) [[unlikely]] {children[k]->x = children[k]->mu; }
+#endif
+		
 	}
 
 }
@@ -143,8 +145,6 @@ void ANode::setTemporaryWB()
 
 void ANode::calcifyWB()
 {
-	//if ((x == .0f) && !updateWIfXis0) { return; };
-
 	for (int k = 0; k < children.size(); k++)
 	{
 		// TODO faster with a branch ?
@@ -170,8 +170,9 @@ void ANode::setActivation(float newX)
 	{
 		children[k]->mu += delta * w_variates[k]; 
 
-		// needed if the datapoint assembly is a parent of the label one (which should not happen)
-		if (children[k]->isFree) {children[k]->x = children[k]->mu; }  
+#ifdef FREE_NODES
+		if (children[k]->isFree) {children[k]->x = children[k]->mu; }
+#endif
 	}
 }
 
@@ -186,7 +187,9 @@ void ANode::transmitPredictions()
 	{
 		children[k]->mu += x * w_variates[k];
 
-		if (children[k]->isFree) { children[k]->x = children[k]->mu; }
+#ifdef FREE_NODES
+		if (children[k]->isFree) {children[k]->x = children[k]->mu; }
+#endif
 	}
 }
 
@@ -205,9 +208,11 @@ void ANode::addChildren(ANode** newChildren, int nNewChildren)
 	w_means.resize(children.size());
 	w_precisions.resize(children.size());
 
+	float amplitude = 1.0f / sqrtf((float) children.size());
+
 	for (int i = (int) children.size() - nNewChildren; i < children.size(); i++)
 	{
-		w_variates[i] = .01f * NORMAL_01;
+		w_variates[i] = amplitude * NORMAL_01;
 		w_means[i] = w_variates[i];
 		w_precisions[i] = wPriorStrength;
 	}

@@ -7,6 +7,7 @@ float Network::KN = 1.f;
 Network::Network(int _datapointSize, int _labelSize, int nLayers, int* sizes) :
 	datapointSize(_datapointSize), labelSize(_labelSize)
 {
+
 	output = new float[labelSize];
 
 	if (sizes != nullptr) {
@@ -25,7 +26,7 @@ Network::Network(int _datapointSize, int _labelSize, int nLayers, int* sizes) :
 			Node** children = nodes.data() + offset - sizes[i - 1];
 
 			for (int j = 0; j < sizes[i]; j++) {
-				nodes[offset + j] = new Node(sizes[i - 1], children);
+				nodes[offset + j] = new Node(sizes[i - 1], children, sizes[i]);
 			}
 
 			for (int j = 0; j < sizes[i - 1]; j++) {
@@ -69,7 +70,7 @@ Network::Network(int _datapointSize, int _labelSize, int nLayers, int* sizes) :
 		nodes.resize(datapointSize + labelSize);
 		for (int i = 0; i < nodes.size(); i++)
 		{
-			nodes[i] = new Node(0, nullptr);
+			nodes[i] = new Node(0, nullptr, 0);
 			nodes[i]->localXReg = 0.f; // no regularisation for the observations.
 		}
 	}
@@ -285,7 +286,7 @@ void Network::topologicalOperations()
 		LOG((int)nodesOverKC.size());
 		LOGL("existing children.");
 
-		Node* newNode = new Node((int)nodesOverKC.size(), nodesOverKC.data());
+		Node* newNode = new Node((int)nodesOverKC.size(), nodesOverKC.data(), 0);
 
 		nodes.push_back(newNode);
 		newNode->transmitPredictions();
@@ -302,3 +303,22 @@ void Network::topologicalOperations()
 		LOGL(a);
 	}
 }
+
+
+void Network::readyForLearning()
+{
+	for (int i = datapointSize; i < datapointSize + labelSize; i++) nodes[i]->isFree = false;
+};
+
+
+void Network::readyForTesting()
+{
+	for (int i = datapointSize; i < datapointSize + labelSize; i++)
+	{
+#ifdef FREE_NODES
+		nodes[i]->isFree = true; 
+#endif
+		nodes[i]->x = nodes[i]->mu;
+	}
+
+};

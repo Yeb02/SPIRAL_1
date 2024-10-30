@@ -40,16 +40,22 @@
 
 #ifdef ANALYTICAL_X
 #undef F
-#define F(x) std::clamp(x, a, b) // a, b are defined at the top of node.cpp. -1 and 1.
+#define F(x) std::clamp(x, a, b) // a, b are defined at the top of node.cpp. -1 and 1 typically.
 #endif
 
 
-// for use in the analytical update only. Otherwise L2 reg.
+// For use in the analytical update only. Not exactly an L1 reg, because no analytical form. Just a small incentive 
+// for picking x = 0. The L2 regularisation is still used.
 //#define REGXL1
 
 
-// TODO figure out a way to fit this in the analytical update.
-#define REGWL1
+// TODO no analytical form, maybe like for the activations a comparison of E0 and Ew*, picking 0 if E0-bonus<Ew*.
+//#define REGWL1
+
+
+// Influence on results ?
+// Immediatly sets x to mu whenever mu changes for the nodes that must be inferred and have no children. Typically the label.
+#define FREE_NODES
 
 
 // one and only one must be active:

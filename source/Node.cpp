@@ -24,21 +24,20 @@ constexpr float a = -1.0f;
 constexpr float b = 1.0f;
 
 
-Node::Node(int _nChildren, Node** _children)
+Node::Node(int _nChildren, Node** _children, int _nCoParents)
 {
-	
+	isFree = false;
+
 	parents.resize(0); // for completeness
 	inParentsListIDs.resize(0); // for completeness
 
 	children.resize(_nChildren);
 	std::copy(_children, _children + _nChildren, children.data());
 
-	float initialAmplitude = .01f;
-#ifdef REGXL1
-	initialAmplitude = 1.f / sqrtf((float)(1+_nChildren)); // otherwise keeping the node's value at 0 is the best option at the beginning of learning, and it never changes.
-#endif
+	float initialAmplitude = 1.f / sqrtf((float)(1 + _nCoParents));
 
-	bx_mean = NORMAL_01 * initialAmplitude;
+
+	bx_mean = NORMAL_01 * .01f;
 	bx_precision = wxPriorStrength;
 	bx_variate = bx_mean;
 
@@ -159,6 +158,10 @@ void Node::XGradientStep()
 
 		c.mu += deltaFX * wx_variates[k];
 
+#ifdef FREE_NODES
+		if (c.isFree) [[unlikely]] {c.x = c.mu; }
+#endif
+
 #ifdef DYNAMIC_PRECISIONS
 		c.t += deltaFX * wt_variates[k];
 #endif
@@ -181,15 +184,17 @@ void Node::analyticalXUpdate()
 	}
 
 #ifdef REGXL1
-	float xstar = (tau * mu + stvw) / (tau + stw2);
+	float xstar = (tau * mu + stvw) / (tau + stw2 + localXReg);
 	xstar = F(xstar);
 	float Estar = tau * powf(xstar - mu, 2.0f) + xstar * (xstar * stw2 - 2.f * stvw) + localXReg; // +stv2
 	float E0 = tau * mu * mu; // +stv2
-	xstar = (E0 < Estar) ? 0.f : xstar;
+	float bonus = .05f;
+	xstar = (E0 - bonus < Estar) ? 0.f : xstar;
 #else
 	float xstar = (tau * mu + stvw) / (tau + stw2 + localXReg);
 	xstar = F(xstar);
 #endif
+
 	
 	x += (xstar - x) * xlr;
 
@@ -206,6 +211,10 @@ void Node::analyticalXUpdate()
 
 		c.mu += deltaFX * wx_variates[k];
 
+#ifdef FREE_NODES
+		if (c.isFree) [[unlikely]] {c.x = c.mu; }
+#endif
+		
 #ifdef DYNAMIC_PRECISIONS
 		c.t += deltaFX * wt_variates[k];
 #endif
@@ -457,6 +466,11 @@ void Node::setActivation(float newX)
 	{
 		children[k]->mu += deltaFX * wx_variates[k];
 
+#ifdef FREE_NODES
+		if (children[k]->isFree) [[unlikely]] {children[k]->x = children[k]->mu; }
+#endif
+		
+
 #ifdef DYNAMIC_PRECISIONS
 		children[k]->t += deltaFX * wt_variates[k];
 #endif
@@ -484,6 +498,10 @@ void Node::transmitPredictions()
 
 void Node::computeLocalQuantities() 
 {
+#ifdef FREE_NODES
+	if (isFree) [[unlikely]] {x = mu;}
+#endif
+	
 	epsilon = x - mu;
 
 #ifdef DYNAMIC_PRECISIONS

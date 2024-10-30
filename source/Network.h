@@ -35,8 +35,8 @@ public:
 	std::vector<Node*> nodes;
 
 
-	void readyForLearning() {}; // just for interchangability of ANetwork and Network in main.cpp
-	void readyForTesting() {};  // just for interchangability of ANetwork and Network in main.cpp
+	void readyForLearning();
+	void readyForTesting();
 
 private:
 

@@ -83,11 +83,11 @@ void ANetwork::evaluate(float* _datapoint, int nSteps)
 {
 	setActivities(_datapoint, nullptr);
 
-	float previousEnergy = computeTotalActivationEnergy();
+	//float previousEnergy = computeTotalActivationEnergy();
 
 	for (int s = 0; s < nSteps; s++)
 	{
-		LOG(previousEnergy);
+		//LOG(previousEnergy);
 
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < permutation.size(); i++)
@@ -95,10 +95,17 @@ void ANetwork::evaluate(float* _datapoint, int nSteps)
 			nodes[permutation[i]]->updateActivation();
 		}
 
-		float currentEnergy = computeTotalActivationEnergy();
-		previousEnergy = currentEnergy;
+#ifndef FREE_NODES
+		for (int i = datapointSize; i < datapointSize + labelSize; i++)
+		{
+			nodes[i]->x = nodes[i]->mu;
+		}
+#endif
+
+		//float currentEnergy = computeTotalActivationEnergy();
+		//previousEnergy = currentEnergy;
 	}
-	LOG(previousEnergy << "\n\n");
+	//LOG(previousEnergy << "\n\n");
 
 
 	for (int i = 0; i < labelSize; i++)
@@ -159,9 +166,19 @@ void ANetwork::readyForLearning() {
 }
 
 void ANetwork::readyForTesting() {
-	for (int i = datapointSize; i < datapointSize + labelSize; i++) nodes[i]->isFree = true;
+	for (int i = datapointSize; i < datapointSize + labelSize; i++) {
+#ifdef FREE_NODES
+		nodes[i]->isFree = true;
+#endif
+		nodes[i]->x = nodes[i]->mu;
+	}
 
-	int nClamped = datapointSize + labelSize; // technically, the label nodes are no clamped. But they do not need an update, so we will ignore them.
+	// technically, the label nodes are not clamped. But they do not need an update, so we will ignore them.
+	// ifdef FREE_NODES, they are instantaneously updated (x set to mu when mu changes). Otherwise, x is set to
+	// mu at the end of a pass over all nodes.
+	int nClamped = datapointSize + labelSize;
+	
+	
 	permutation.resize(nodes.size() - nClamped);
 	for (int i = nClamped; i < nodes.size(); i++) permutation[i - nClamped] = i;
 

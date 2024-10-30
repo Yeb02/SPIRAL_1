@@ -86,7 +86,7 @@ int main()
 
 	constexpr bool dynamicTopology = false;
 
-//	Node::xlr = 1.0f;
+//	Node::xlr = 1.f;
 //	Node::wxPriorStrength = 1.0f;
 //	Node::wtPriorStrength = 1.0f;
 //	Node::observationImportance = 1.0f;
@@ -115,16 +115,12 @@ int main()
 //	nTrainSteps = 10; 
 //	nTestSteps = 10;
 //#endif
-// 
-// 
-// 	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
-//  int nTestSteps = 4;
 //
 //	// C++ is really stupid sometimes
 //	/*const int _nLayers = 5;
 //	int _sizes[_nLayers + 2] = {0, datapointS + labelS, 50, 25, 15, 5, 0};*/
-//	const int _nLayers = 3;
-//	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 20, 7, 0 };
+//	const int _nLayers = 2;
+//	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 30, 0 };
 //	//const int _nLayers = 2;
 //	//int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 3, 0 };
 //
@@ -140,40 +136,48 @@ int main()
 
 
 
-	ANode::wReg = .05f;
-	ANode::wPriorStrength = 1.f;
-	ANode::observationImportance = 1.0f;
+	ANode::wReg = .25f;
+	ANode::wPriorStrength = .1f;
+	ANode::observationImportance = .1f;
 	ANode::certaintyDecay = .01f;
-	ANode::xReg = .05f;
+	ANode::xReg = .1f;
 
 	ANetwork nn(datapointS, labelS);
+	if (true)
 	{
 		float target_density = .5f;
 		float density_strength = .1f;
 		float target_freqency = .5f;
 		float freqency_strength = .1f;
-		Assembly* a2 = new Assembly(200, target_density, density_strength, target_freqency, freqency_strength);
+		int nNodes = 200;
+		Assembly* a2 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
 		nn.addAssembly(a2);
-		/*Assembly* a3 = new Assembly(200, target_density, density_strength, target_freqency, freqency_strength);
+		Assembly* a3 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
 		nn.addAssembly(a3);
-		Assembly* a4 = new Assembly(200, target_density, density_strength, target_freqency, freqency_strength);
-		nn.addAssembly(a4);*/
+		//Assembly* a4 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
+		//nn.addAssembly(a4);
 
-		nn.addConnexion(2, 0, .2f);
-		nn.addConnexion(2, 1, 1.f);
-		nn.addConnexion(2, 2, 1.f);
-
-		//nn.addConnexion(0, 2, 1.f);
+		//nn.addConnexion(2, 0, .2f);
 		//nn.addConnexion(2, 1, 1.f);
-		//nn.addConnexion(2, 2, .3f);
+		//nn.addConnexion(2, 2, 1.f);
 
 		//nn.addConnexion(2, 0, 1.f);
-		//nn.addConnexion(3, 2, 1.f);
-		//nn.addConnexion(4, 3, 1.f);
+		//nn.addConnexion(2, 1, 1.f);
+		//nn.addConnexion(2, 2, 1.f);
+
+		float i_f = 1.f;
+		float o_f = 1.f;
+		nn.addConnexion(2, 0, 1.f);
+		//nn.addConnexion(2, 2, i_f);
+		nn.addConnexion(3, 2, o_f);
+		nn.addConnexion(3, 1, o_f);
+		//nn.addConnexion(3, 3, i_f);
+		//nn.addConnexion(4, 3, o_f);
 		//nn.addConnexion(4, 1, 1.f);
+		//nn.addConnexion(4, 4, i_f);
 	}
-	int nTrainSteps = 5;
-	int nTestSteps = 5;
+	int nTrainSteps = 3;
+	int nTestSteps = 3;
 
 
 
@@ -314,7 +318,7 @@ int main()
 		{
 			nn.evaluate(testShuffledPoints[i], nTestSteps);
 
-			LOG("\n");
+			//LOG("\n");
 
 
 			float MSE_loss = .0f;
@@ -323,7 +327,7 @@ int main()
 				MSE_loss += powf(output[j] - testShuffledLabels[i][j], 2.0f);
 			}
 			int isCorrect = isCorrectAnswer(output, testShuffledLabels[i]);
-			LOGL(isCorrect << " " << MSE_loss << "\n");
+			//LOGL(isCorrect << " " << MSE_loss << "\n");
 			nCorrects += isCorrect;
 		}
 		LOGL("\n" << (float)nCorrects / (float)nTests);
