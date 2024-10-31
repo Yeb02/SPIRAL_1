@@ -137,19 +137,19 @@ int main()
 
 
 	ANode::wReg = .25f;
-	ANode::wPriorStrength = .1f;
-	ANode::observationImportance = .1f;
+	ANode::wPriorStrength = .02f;
+	ANode::observationImportance = .02f;
 	ANode::certaintyDecay = .01f;
 	ANode::xReg = .1f;
 
 	ANetwork nn(datapointS, labelS);
 	if (true)
 	{
-		float target_density = .5f;
-		float density_strength = .1f;
-		float target_freqency = .5f;
-		float freqency_strength = .1f;
-		int nNodes = 200;
+		float target_density = .1f;
+		float density_strength = 2.f;
+		float target_freqency = .2f;
+		float freqency_strength = 1.f;
+		int nNodes = 300;
 		Assembly* a2 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
 		nn.addAssembly(a2);
 		Assembly* a3 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
@@ -168,16 +168,16 @@ int main()
 		float i_f = 1.f;
 		float o_f = 1.f;
 		nn.addConnexion(2, 0, 1.f);
-		//nn.addConnexion(2, 2, i_f);
-		nn.addConnexion(3, 2, o_f);
-		nn.addConnexion(3, 1, o_f);
+		nn.addConnexion(2, 1, o_f);
+		nn.addConnexion(3, 2, 1.f);
+		//nn.addConnexion(3, 1, o_f);
 		//nn.addConnexion(3, 3, i_f);
 		//nn.addConnexion(4, 3, o_f);
 		//nn.addConnexion(4, 1, 1.f);
 		//nn.addConnexion(4, 4, i_f);
 	}
-	int nTrainSteps = 3;
-	int nTestSteps = 3;
+	int nTrainSteps = 5;
+	int nTestSteps = 5;
 
 
 

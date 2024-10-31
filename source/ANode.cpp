@@ -208,7 +208,7 @@ void ANode::addChildren(ANode** newChildren, int nNewChildren)
 	w_means.resize(children.size());
 	w_precisions.resize(children.size());
 
-	float amplitude = 1.0f / sqrtf((float) children.size());
+	float amplitude = 1.f / sqrtf((float) children.size());
 
 	for (int i = (int) children.size() - nNewChildren; i < children.size(); i++)
 	{
