@@ -7,14 +7,6 @@
 #define SECOND_ORDER_L1
 
 
-//#define DYNAMIC_PRECISIONS  // Do not use until the reason why on the retrocausal task mus/bs are drawn to infinity. Does not happen with FIXED_PRECISIONS_BUT_CONTRIBUTE.
-#ifndef DYNAMIC_PRECISIONS
-//#define FIXED_PRECISIONS_BUT_CONTRIBUTE 
-#endif
-
-
-#define WBX_IGNORE_TAU 
-
 
 #define ASYNCHRONOUS_UPDATES 
 
@@ -49,9 +41,6 @@
 //#define REGXL1
 
 
-// TODO no analytical form, maybe like for the activations a comparison of E0 and Ew*, picking 0 if E0-bonus<Ew*.
-//#define REGWL1
-
 
 // Influence on results ?
 // Immediatly sets x to mu whenever mu changes for the nodes that must be inferred and have no children. Typically the label.
@@ -63,9 +52,6 @@
 #define REGWX (fi * fi)
 //#define REGWX (epsilon * epsilon * fi * fi)
 
-// one and only one must be active:
-//#define REGWT 1.0f
-#define REGWT (fi * fi)
 
 
 

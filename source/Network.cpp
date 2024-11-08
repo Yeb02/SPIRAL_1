@@ -1,8 +1,6 @@
 #include "Network.h"	
 
 
-float Network::KC = 1.f;
-float Network::KN = 1.f;
 
 Network::Network(int _datapointSize, int _labelSize, int nLayers, int* sizes) :
 	datapointSize(_datapointSize), labelSize(_labelSize)
@@ -10,70 +8,57 @@ Network::Network(int _datapointSize, int _labelSize, int nLayers, int* sizes) :
 
 	output = new float[labelSize];
 
-	if (sizes != nullptr) {
-		dynamicTopology = false;
-		int nNodes = 0;
-		for (int i = 0; i < nLayers; i++) {
-			nNodes += sizes[i];
-		}
-		nodes.resize(nNodes);
-
-		int offset = 0;
-		for (int i = 0; i < nLayers; i++)
-		{
-			// Keep in mind that sizes[] is padded by zeros (see main.cpp)
-			// Will throw an error if adress sanitizer is on though. But so much more convenient.
-			Node** children = nodes.data() + offset - sizes[i - 1];
-
-			for (int j = 0; j < sizes[i]; j++) {
-				nodes[offset + j] = new Node(sizes[i - 1], children, sizes[i]);
-			}
-
-			for (int j = 0; j < sizes[i - 1]; j++) {
-				children[j]->parents.resize(sizes[i]);
-				std::copy(nodes.data() + offset,
-					nodes.data() + offset + sizes[i],
-					nodes[offset - sizes[i - 1] + j]->parents.data()
-				);
-				children[j]->inParentsListIDs.resize(sizes[i]);
-				std::fill(children[j]->inParentsListIDs.begin(),
-					children[j]->inParentsListIDs.end(),
-					j
-				);
-			}
-
-			offset += sizes[i];
-		}
-
-		// Set the nodes quantities to their correct values to prepare inference
-		for (int i = 0; i < nodes.size(); i++)
-		{
-			nodes[i]->prepareToReceivePredictions();
-		}
-		for (int i = 0; i < nodes.size(); i++)
-		{
-			nodes[i]->transmitPredictions();
-		}
-		for (int i = 0; i < nodes.size(); i++)
-		{
-			nodes[i]->computeLocalQuantities();
-		}
-
-		for (int j = 0; j < sizes[0]; j++) {
-			nodes[j]->localXReg = 0.f; // no regularisation for the observations.
-		}
+	int nNodes = 0;
+	for (int i = 0; i < nLayers; i++) {
+		nNodes += sizes[i];
 	}
-	else 
+	nodes.resize(nNodes);
+
+	int offset = 0;
+	for (int i = 0; i < nLayers; i++)
 	{
-		dynamicTopology = true;
+		// Keep in mind that sizes[] is padded by zeros (see main.cpp)
+		// Will throw an error if adress sanitizer is on though. But so much more convenient.
+		Node** children = nodes.data() + offset - sizes[i - 1];
 
-		nodes.resize(datapointSize + labelSize);
-		for (int i = 0; i < nodes.size(); i++)
-		{
-			nodes[i] = new Node(0, nullptr, 0);
-			nodes[i]->localXReg = 0.f; // no regularisation for the observations.
+		for (int j = 0; j < sizes[i]; j++) {
+			nodes[offset + j] = new Node(sizes[i - 1], children, sizes[i]);
 		}
+
+		for (int j = 0; j < sizes[i - 1]; j++) {
+			children[j]->parents.resize(sizes[i]);
+			std::copy(nodes.data() + offset,
+				nodes.data() + offset + sizes[i],
+				nodes[offset - sizes[i - 1] + j]->parents.data()
+			);
+			children[j]->inParentsListIDs.resize(sizes[i]);
+			std::fill(children[j]->inParentsListIDs.begin(),
+				children[j]->inParentsListIDs.end(),
+				j
+			);
+		}
+
+		offset += sizes[i];
 	}
+
+	// Set the nodes quantities to their correct values to prepare inference
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->prepareToReceivePredictions();
+	}
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->transmitPredictions();
+	}
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->computeLocalQuantities();
+	}
+
+	for (int j = 0; j < sizes[0]; j++) {
+		nodes[j]->localXReg = 0.f; // no regularisation for the observations.
+	}
+	
 }
 
 
@@ -97,7 +82,7 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 	for (int i = nClamped; i < nodes.size(); i++) permutation[i - nClamped] = i;
 
 
-	float previousEnergy = computeTotalActivationEnergy();
+	//float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++) 
 	{
 		//LOG(previousEnergy);
@@ -127,18 +112,11 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		}
 #endif
 
-		float currentEnergy = computeTotalActivationEnergy();
-		previousEnergy = currentEnergy;
+		//float currentEnergy = computeTotalActivationEnergy();
+		//previousEnergy = currentEnergy;
 	}
 	//LOG(previousEnergy << "\n\n");
 
-
-#if defined(DYNAMIC_PRECISIONS) || defined(FIXED_PRECISIONS_BUT_CONTRIBUTE)
-	for (int i = 0; i < nodes.size(); i++)
-	{
-		nodes[i]->computeLeps();
-	}
-#endif
 
 #ifdef VANILLA_PREDICTIVE_CODING 
 	for (int i = 0; i < nodes.size(); i++)
@@ -146,22 +124,18 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		nodes[i]->predictiveCodingWxGradientStep();
 	}
 #else
-	for (int s = 0; s < 1; s++) // if DYNAMIC_PRECISIONS is enabled, it is not redundant to perform those operations more than once. TODO test.
+
+	for (int i = 0; i < nodes.size(); i++)
 	{
-		for (int i = 0; i < nodes.size(); i++)
-		{
-			nodes[i]->setAnalyticalWX();
-			nodes[i]->setAnalyticalWT();
-		}
+		nodes[i]->setAnalyticalWX();
 	}
+	
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
 		nodes[i]->calcifyWB();
 	}
 #endif
-
-	if (dynamicTopology) topologicalOperations();
 }
 
 void Network::evaluate(float* _datapoint, int nSteps) 
@@ -177,7 +151,7 @@ void Network::evaluate(float* _datapoint, int nSteps)
 
 	
 
-	float previousEnergy = computeTotalActivationEnergy();
+	//float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++)
 	{
 		//LOG(previousEnergy);
@@ -210,8 +184,8 @@ void Network::evaluate(float* _datapoint, int nSteps)
 		}
 #endif
 
-		float currentEnergy = computeTotalActivationEnergy();
-		previousEnergy = currentEnergy;
+		//float currentEnergy = computeTotalActivationEnergy();
+		//previousEnergy = currentEnergy;
 	}
 	//LOG(previousEnergy);
 
@@ -226,17 +200,13 @@ void Network::evaluate(float* _datapoint, int nSteps)
 float Network::computeTotalActivationEnergy()
 {
 	float E2 = 0.f;
-	//float Elog = 0.f;
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		E2 += nodes[i]->epsilon * nodes[i]->epsilon; // *nodes[i]->tau;
-		//Elog += - logf(nodes[i]->tau); 
-		// + constants
+		E2 += nodes[i]->epsilon * nodes[i]->epsilon; 
 	}
 
-	//return (E2 + Elog) * .5f;
-	return E2 * .5f;
+	return E2;
 }
 
 void Network::setActivities(float* _datapoint, float* _label)
@@ -265,51 +235,11 @@ void Network::setActivities(float* _datapoint, float* _label)
 }
 
 
-void Network::topologicalOperations()
-{
-	nodesOverKC.clear();
-
-	float acc = .0f;
-	for (int i = 0; i < nodes.size(); i++)
-	{
-		if (nodes[i]->accumulatedEnergy > KC) {
-			acc += sqrtf(nodes[i]->accumulatedEnergy - KC);
-			nodesOverKC.push_back(nodes[i]);
-		}
-
-		nodes[i]->pruneUnusedConnexions();
-	}
-
-	if (acc > KN) {
-
-		LOG("\nAdding a parent to");
-		LOG((int)nodesOverKC.size());
-		LOGL("existing children.");
-
-		Node* newNode = new Node((int)nodesOverKC.size(), nodesOverKC.data(), 0);
-
-		nodes.push_back(newNode);
-		newNode->transmitPredictions();
-
-		int a = 0;
-		for (int i = 0; i < nodesOverKC.size(); i++)
-		{
-			a += (nodesOverKC[i]->children.size() > 0) ? 1 : 0;
-			nodesOverKC[i]->inParentsListIDs.push_back(i);
-			nodesOverKC[i]->parents.push_back(newNode);
-			nodesOverKC[i]->accumulatedEnergy = 0.f;
-			nodesOverKC[i]->computeLocalQuantities();
-		}
-		LOGL(a);
-	}
-}
-
 
 void Network::readyForLearning()
 {
 	for (int i = datapointSize; i < datapointSize + labelSize; i++) nodes[i]->isFree = false;
 };
-
 
 void Network::readyForTesting()
 {

@@ -12,18 +12,11 @@ public:
 	
 	static float xReg; 
 	static float wxReg;
-	static float wtReg;
-
 
 	static float wxPriorStrength;
-	static float wtPriorStrength;
 
 	static float observationImportance;
 	static float certaintyDecay;
-
-
-	static float energyDecay;
-	static float connexionEnergyThreshold;
 
 	float localXReg; // set at 0 for observation/label nodes by the parent network, xReg otherwise
 
@@ -42,36 +35,11 @@ public:
 	std::vector<float> wx_means;
 	std::vector<float> wx_precisions;
 
-#ifdef DYNAMIC_PRECISIONS
-	float bt_variate;
-	float bt_mean;
-	float bt_precision;
-
-	// outgoing weights computing the children's t
-	std::vector<float> wt_variates;
-	std::vector<float> wt_means;
-	std::vector<float> wt_precisions;
-
-	// the prediction accumulator for tau = expf(t)
-	float t;
-
-#endif
 
 	float x, fx, tau, epsilon, mu;
 
-#if defined(DYNAMIC_PRECISIONS) || defined(FIXED_PRECISIONS_BUT_CONTRIBUTE)
-	float leps;
-	void computeLeps(); // to be called after activations convergence, before optimal weights computation and calcification
-#endif
 
-#ifdef FIXED_PRECISIONS_BUT_CONTRIBUTE
-	float tau_mean, tau_precision;
-#endif
-
-	// for topology
-	float accumulatedEnergy; 
-	std::vector<float> connexionEnergies;
-
+	void compute_sw();
 
 	Node(int _nChildren, Node** _children, int _nCoParents);
 
@@ -85,16 +53,10 @@ public:
 
 	void setAnalyticalWX();
 
-	void setAnalyticalWT();
-
-	
 
 	// Sets the MAP ('mean') to the variate, and updates the precision. Also updates the energies ahead of topological operations.
 	void calcifyWB();
 
-
-
-	void pruneUnusedConnexions();
 
 	// For benchmarking purposes
 	void predictiveCodingWxGradientStep();

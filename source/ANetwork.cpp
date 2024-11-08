@@ -243,6 +243,13 @@ void ANetwork::addConnexion(int originID, int destinationID, float p)
 				inParentsIDs[np] = i;
 				np++;
 			}
+			if (dA == oA) 
+			{
+				for (int j = 0; j < i; j++)
+				{
+					inParentsIDs[j] = i - 1; // because the j-th parent does not have itself as a child, their children list is shifted by 1 after the skip.
+				}
+			}
 			nodes[dA->firstNodeID + i]->addParents(parents.data(), inParentsIDs.data(), np);
 		}
 	}

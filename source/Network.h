@@ -8,10 +8,6 @@
 class Network 
 {
 public:
-	
-	static float KC;
-	static float KN;
-
 
 	Network(int _datapointSize, int _labelSize, int nLayers = 0, int* sizes = nullptr);
 
@@ -21,8 +17,6 @@ public:
 	void learn(float* _datapoint, float* _label, int nSteps);
 
 	void evaluate(float* _datapoint, int nSteps);
-
-	int getNNodes() { return (int)nodes.size(); }
 
 	float computeTotalActivationEnergy();
 
@@ -44,10 +38,5 @@ private:
 
 
 	void setActivities(float* _datapoint = nullptr, float* _label = nullptr); 
-
-
-	bool dynamicTopology;
-	std::vector<Node*> nodesOverKC;
-	void topologicalOperations();
 
 };
