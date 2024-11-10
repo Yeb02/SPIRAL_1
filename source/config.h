@@ -13,9 +13,9 @@
 
 
 // one and only one must be active:
-#define TANH 
-//#define QSIGMOIDE
-//#define ID 
+//#define TANH 
+//#define QSIGMOIDE   // performs significantly worse than the other and the analytical update.
+#define ID 
 
 #ifdef TANH
 #define F(x) tanhf(x)			   // F' = (1-tanhf²) = 1 - F²
@@ -36,13 +36,15 @@
 #endif
 
 
+
 // For use in the analytical update only. Not exactly an L1 reg, because no analytical form. Just a small incentive 
 // for picking x = 0. The L2 regularisation is still used.
 //#define REGXL1
 
 
 
-// Influence on results ?
+
+// Influence on results ? Seems like none ... Somewhat surprising, insight may be gained from understanding why.
 // Immediatly sets x to mu whenever mu changes for the nodes that must be inferred and have no children. Typically the label.
 #define FREE_NODES
 

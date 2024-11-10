@@ -87,13 +87,13 @@ int main()
 
 
 	Node::xlr = 1.f;
-	Node::wxPriorStrength = 1.0f;
-	Node::observationImportance = 1.0f;
+	Node::wxPriorStrength = 1.f;
+	Node::observationImportance = 1.f;
 	Node::certaintyDecay = .01f;
-	Node::xReg  = .1f;   
-	Node::wxReg = .05f;  
+	Node::xReg  = 0.1f;   
+	Node::wxReg = 0.f;  
 
-	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results. More steps requires lower wxlr.
+	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results.
 	int nTestSteps = 4;
 
 
@@ -105,60 +105,86 @@ int main()
 	nTestSteps = 10;
 #endif
 
-	/*const int _nLayers = 5;
-	int _sizes[_nLayers + 2] = {0, datapointS + labelS, 50, 25, 15, 5, 0};*/
-	const int _nLayers = 2;
-	int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 30, 0 };
-	//const int _nLayers = 2;
-	//int _sizes[_nLayers + 2] = { 0, datapointS + labelS, 3, 0 };
+	Network nn(datapointS, labelS); // datapoint is group 0, label group 1.
+	int topo = 1;
 
+	switch (topo) {
 
-	Network nn(datapointS, labelS, _nLayers, &(_sizes[1]));
+	case 0: {
+		nn.addGroup(50); //group 2
+		nn.addGroup(25); //group 3
+		nn.addGroup(10); //group 4
+		nn.addConnexion(4, 3);
+		nn.addConnexion(3, 2);
+		nn.addConnexion(2, 1);
+		nn.addConnexion(2, 0);
+		break;
+	}
+	case 1: {
+		nn.addGroup(20); //group 2
+		nn.addGroup(5);  //group 3
+		nn.addConnexion(3, 2);
+		//nn.addConnexion(3, 3);
+		nn.addConnexion(2, 0);
 
+		nn.addConnexion(1, 2);
+		//nn.addConnexion(2, 1);
+		break;
+	}
+	case 2: {
+		nn.addGroup(1);  //group 2
+		nn.addConnexion(2, 1);
+		nn.addConnexion(2, 0);
+		break;
+	}
+	
+	}
+	nn.initialize();
 
+	// ANetwork
+	{
+		//ANode::wReg = .25f;
+		//ANode::wPriorStrength = .02f;
+		//ANode::observationImportance = .02f;
+		//ANode::certaintyDecay = .01f;
+		//ANode::xReg = .1f;
 
+		//ANetwork nn(datapointS, labelS);
+		//{
+		//	float target_density = .1f;
+		//	float density_strength = 2.f;
+		//	float target_freqency = .2f;
+		//	float freqency_strength = 1.f;
+		//	int nNodes = 300;
+		//	Assembly* a2 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
+		//	nn.addAssembly(a2);
+		//	Assembly* a3 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
+		//	nn.addAssembly(a3);
+		//	//Assembly* a4 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
+		//	//nn.addAssembly(a4);
 
-	//ANode::wReg = .25f;
-	//ANode::wPriorStrength = .02f;
-	//ANode::observationImportance = .02f;
-	//ANode::certaintyDecay = .01f;
-	//ANode::xReg = .1f;
+		//	//nn.addConnexion(2, 0, .2f);
+		//	//nn.addConnexion(2, 1, 1.f);
+		//	//nn.addConnexion(2, 2, 1.f);
 
-	//ANetwork nn(datapointS, labelS);
-	//{
-	//	float target_density = .1f;
-	//	float density_strength = 2.f;
-	//	float target_freqency = .2f;
-	//	float freqency_strength = 1.f;
-	//	int nNodes = 300;
-	//	Assembly* a2 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
-	//	nn.addAssembly(a2);
-	//	Assembly* a3 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
-	//	nn.addAssembly(a3);
-	//	//Assembly* a4 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
-	//	//nn.addAssembly(a4);
+		//	//nn.addConnexion(2, 0, 1.f);
+		//	//nn.addConnexion(2, 1, 1.f);
+		//	//nn.addConnexion(2, 2, 1.f);
 
-	//	//nn.addConnexion(2, 0, .2f);
-	//	//nn.addConnexion(2, 1, 1.f);
-	//	//nn.addConnexion(2, 2, 1.f);
-
-	//	//nn.addConnexion(2, 0, 1.f);
-	//	//nn.addConnexion(2, 1, 1.f);
-	//	//nn.addConnexion(2, 2, 1.f);
-
-	//	float i_f = 1.f;
-	//	float o_f = 1.f;
-	//	nn.addConnexion(2, 0, 1.f);
-	//	nn.addConnexion(2, 1, o_f);
-	//	nn.addConnexion(3, 2, 1.f);
-	//	//nn.addConnexion(3, 1, o_f);
-	//	//nn.addConnexion(3, 3, i_f);
-	//	//nn.addConnexion(4, 3, o_f);
-	//	//nn.addConnexion(4, 1, 1.f);
-	//	//nn.addConnexion(4, 4, i_f);
-	//}
-	//int nTrainSteps = 4;
-	//int nTestSteps = 4;
+		//	float i_f = 1.f;
+		//	float o_f = 1.f;
+		//	nn.addConnexion(2, 0, 1.f);
+		//	nn.addConnexion(2, 1, o_f);
+		//	nn.addConnexion(3, 2, 1.f);
+		//	//nn.addConnexion(3, 1, o_f);
+		//	//nn.addConnexion(3, 3, i_f);
+		//	//nn.addConnexion(4, 3, o_f);
+		//	//nn.addConnexion(4, 1, 1.f);
+		//	//nn.addConnexion(4, 4, i_f);
+		//}
+		//int nTrainSteps = 4;
+		//int nTestSteps = 4;
+	}
 
 
 

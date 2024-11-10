@@ -39,11 +39,19 @@ public:
 	float x, fx, tau, epsilon, mu;
 
 
-	void compute_sw();
 
-	Node(int _nChildren, Node** _children, int _nCoParents);
+
+	Node();
 
 	~Node() {};
+
+
+
+	void addChildren(Node** newChildren, int nNewChildren, int specialCase);
+
+	void addParents(Node** newParents, int* newInParentIDs, int nNewParents);
+
+
 
 
 	void XGradientStep();
@@ -51,21 +59,29 @@ public:
 	void analyticalXUpdate();
 
 
+
+
 	void setAnalyticalWX();
 
-
-	// Sets the MAP ('mean') to the variate, and updates the precision. Also updates the energies ahead of topological operations.
 	void calcifyWB();
+
+
+	// For weights normalization. Has not shown improvements, so its content can be commented out
+	void compute_sw();
+
 
 
 	// For benchmarking purposes
 	void predictiveCodingWxGradientStep();
 
+
+
+
+
 	// Updates the children's predicted quantities (mu and t) as well, which requires them to be up to date 
 	// relative to the current parameters ! 
 	// And a call to computeLocalQuantities must be performed afterwards by the children !
 	void setActivation(float newX);
-
 
 	// sets up (i.e. intitializes accumulators with the biases) this node to receive and 
 	// make sense of prediction information regarding its mu and t

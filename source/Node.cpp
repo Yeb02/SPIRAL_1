@@ -4,49 +4,37 @@
 
 // Recommended values:
 
-float Node::xlr = .8f;
+float Node::xlr = 1.f;
 
-float Node::wxPriorStrength = .2f;
+float Node::wxPriorStrength = 1.f;
 
-float Node::observationImportance = 1.0f;
-float Node::certaintyDecay = .02f;
+float Node::observationImportance = 1.f;
+float Node::certaintyDecay = .01f;
 
-float Node::xReg = .01f;
-float Node::wxReg = .01f;
+float Node::xReg = .0f;
+float Node::wxReg = .0f;
 
 // bounds for analytical X update
-constexpr float a = -1.0f;
-constexpr float b = 1.0f;
+constexpr float a = -1.f;
+constexpr float b = 1.f;
 
 
-Node::Node(int _nChildren, Node** _children, int _nCoParents)
+Node::Node()
 {
 	isFree = false;
 
 	parents.resize(0); // for completeness
 	inParentsListIDs.resize(0); // for completeness
 
-	children.resize(_nChildren);
-	std::copy(_children, _children + _nChildren, children.data());
-
-	float initialAmplitude = 1.f / sqrtf((float)(1 + _nCoParents));
-
-
+	children.resize(0);
+	
 	bx_mean = NORMAL_01 * .01f;
 	bx_precision = wxPriorStrength;
 	bx_variate = bx_mean;
 
-	wx_means.resize(_nChildren);
-	wx_precisions.resize(_nChildren);
-	wx_variates.resize(_nChildren);
-
-	std::fill(wx_precisions.begin(), wx_precisions.end(), wxPriorStrength);
-	for (int i = 0; i < _nChildren; i++) wx_means[i] = NORMAL_01 * initialAmplitude;
-	wx_variates.assign(wx_means.begin(), wx_means.end());
-
 
 	mu = bx_mean;
-	x = bx_mean;
+	x = mu;
 	fx = F(x);
 
 	tau = 1.0f;
@@ -56,6 +44,41 @@ Node::Node(int _nChildren, Node** _children, int _nCoParents)
 
 	computeLocalQuantities();
 }
+
+
+
+void Node::addParents(Node** newParents, int* newInParentIDs, int nNewParents)
+{
+	parents.insert(parents.end(), newParents, newParents + nNewParents);
+	inParentsListIDs.insert(inParentsListIDs.end(), newInParentIDs, newInParentIDs + nNewParents);
+}
+
+void Node::addChildren(Node** newChildren, int nNewChildren, int specialCase)
+{
+	children.insert(children.end(), newChildren, newChildren + nNewChildren);
+
+	wx_variates.resize(children.size());
+	wx_means.resize(children.size());
+	wx_precisions.resize(children.size());
+
+	float amplitude = .01f;
+	//float amplitude = .1f / sqrtf((float)(1 + (int)children.size()));
+
+	for (int i = (int)children.size() - nNewChildren; i < children.size(); i++)
+	{
+		wx_variates[i] = amplitude * NORMAL_01;
+		wx_means[i] = wx_variates[i];
+		wx_precisions[i] = wxPriorStrength;
+	}
+
+	if (specialCase != -1) // if connecting to the same group and self connexions not allowed
+	{
+		wx_variates[specialCase] = .0f;
+		wx_means[specialCase] = wx_variates[specialCase];
+		wx_precisions[specialCase] = 1000000000.f; // TODO decay will lower this to the same value as other nodes after some time...
+	}
+}
+
 
 
 void Node::XGradientStep() 
@@ -206,6 +229,7 @@ void Node::setAnalyticalWX()
 	epsilon = (x - s2) / (1.f + s1);
 	mu = x - epsilon;
 
+	float sw2 = .0f;
 
 	bx_variate = epsilon/ bx_precision + bx_mean;
 	for (int i = 0; i < parents.size(); i++)
@@ -214,22 +238,34 @@ void Node::setAnalyticalWX()
 		float fi = parents[i]->fx;
 		float tau_i = parents[i]->wx_precisions[id];
 
+
 		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id])/(tau_i + wxReg * REGWX);
+
+
+		sw2 += powf(parents[i]->wx_variates[id], 2.0f);
 	}
+
+	//sw2 = 1.f * powf(sw2, -.5f);
+	//mu = bx_variate;
+	//for (int i = 0; i < parents.size(); i++)
+	//{
+	//	int id = inParentsListIDs[i];
+	//	parents[i]->wx_variates[id] *= sw2;
+	//	mu += parents[i]->wx_variates[id] * parents[i]->fx;
+	//}
+	//epsilon = x - mu;
 }
 
 
 void Node::calcifyWB()
 {
-	compute_sw();
-
 	for (int k = 0; k < children.size(); k++)
 	{
-		wx_precisions[k] = wx_precisions[k] * (1.0f - fx*fx*certaintyDecay) + observationImportance * fx * fx;
+		wx_precisions[k] += fx * fx * (- wx_precisions[k] * certaintyDecay + observationImportance) * children[k]->tau; //   * children[k]->tau
 		wx_means[k] = wx_variates[k];
 	}
-	
-	bx_precision = bx_precision * (1.0f - certaintyDecay) + observationImportance;
+
+	bx_precision += (- bx_precision * certaintyDecay + observationImportance) * tau; // tau *
 	bx_mean = bx_variate;
 }
 
@@ -291,10 +327,10 @@ void Node::computeLocalQuantities()
 
 void Node::compute_sw() 
 {
-	tau = children.size() == 0 ? 1.0f : 0.0f;
-	for (int i = 0; i < children.size(); i++) tau += powf(wx_variates[i] * children[i]->tau, 2.0f);
-	tau = sqrtf(tau);
-
-	//tau = 1.0f;
+	//tau = children.size() == 0 ? 1.0f : 0.0f;
+	//for (int i = 0; i < children.size(); i++) tau += powf(wx_variates[i] * children[i]->tau, 2.0f);
+	//tau = sqrtf(tau);
+	
+	//tau = std::min(tau, 1.0f);
 }
 
