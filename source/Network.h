@@ -17,6 +17,7 @@ public:
 
 	void evaluate(float* _datapoint, int nSteps);
 
+	// for monitoring purposes only
 	float computeTotalActivationEnergy();
 
 	// updated only at the end of a evaluate() call
@@ -41,11 +42,11 @@ private:
 	bool testingMode;	// False if in learning mode, true if in testing mode. False if neither.
 
 
-	std::vector<int> groupSizes;	 // Number of nodes per group
+	std::vector<Group*> groups;	 
 	std::vector<int> groupOffsets;   // Id of the FIRST node of the group in the "nodes" vector.
 
 #ifdef FREE_NODES
-	std::vector<int> freeGroups;
+	std::vector<int> freeGroups; // TODO
 #endif
 
 	int datapointSize, labelSize;

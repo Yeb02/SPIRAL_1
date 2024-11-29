@@ -18,7 +18,7 @@ int main()
 
 	// one and only one must be set to  true
 	bool useMNIST = true;
-	bool testRetrocausal = false;
+	bool testRetrocausal = !useMNIST;
 	if (useMNIST)
 	{
 		datapointS = 28 * 28;
@@ -91,7 +91,7 @@ int main()
 	Node::observationImportance = 1.f;
 	Node::certaintyDecay = .01f;
 	Node::xReg  = 0.1f;   
-	Node::wxReg = 0.f;  
+	Node::wxReg = 0.1f;  // Hinders performance ?? REGL1 necessary to find the "correct" biases.
 
 	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results.
 	int nTestSteps = 4;
@@ -100,91 +100,94 @@ int main()
 #ifdef VANILLA_PREDICTIVE_CODING
 	Node::xlr = .1f;
 	Node::xReg = .0f;  
-	Node::wxReg = .00f; 
+	Node::wxReg = .0f; 
 	nTrainSteps = 10; 
 	nTestSteps = 10;
 #endif
 
-	Network nn(datapointS, labelS); // datapoint is group 0, label group 1.
+	Network nn(datapointS, labelS); // datapoint is group 0, label is group 1.
 	int topo = 1;
 
 	switch (topo) {
+		case 0: {
+			nn.addGroup(50); //group 2
+			nn.addGroup(25); //group 3
+			nn.addGroup(10); //group 4
+			nn.addConnexion(4, 3);
+			nn.addConnexion(3, 2);
+			nn.addConnexion(2, 1);
+			nn.addConnexion(2, 0);
+			break;
+		}
+		case 1: {
+			nn.addGroup(20); //group 2
+			//nn.addGroup(5);  //group 3
+			//nn.addConnexion(3, 2);
+			//nn.addConnexion(3, 3);
+			//nn.addConnexion(0, 2);
+			nn.addConnexion(2, 0);
+			//nn.addConnexion(2, 2);
 
-	case 0: {
-		nn.addGroup(50); //group 2
-		nn.addGroup(25); //group 3
-		nn.addGroup(10); //group 4
-		nn.addConnexion(4, 3);
-		nn.addConnexion(3, 2);
-		nn.addConnexion(2, 1);
-		nn.addConnexion(2, 0);
-		break;
-	}
-	case 1: {
-		nn.addGroup(20); //group 2
-		nn.addGroup(5);  //group 3
-		nn.addConnexion(3, 2);
-		//nn.addConnexion(3, 3);
-		nn.addConnexion(2, 0);
-
-		nn.addConnexion(1, 2);
-		//nn.addConnexion(2, 1);
-		break;
-	}
-	case 2: {
-		nn.addGroup(1);  //group 2
-		nn.addConnexion(2, 1);
-		nn.addConnexion(2, 0);
-		break;
-	}
-	
+			//nn.addConnexion(1, 2);
+			nn.addConnexion(2, 1);
+			break;
+		}
+		case 2: {
+			nn.addGroup(1);  //group 2
+			nn.addConnexion(2, 1);
+			nn.addConnexion(2, 0);
+			break;
+		}
+		case 3: { // VANILLA_PREDICTIVE_CODING  configuration: top down predictions, label -> hidden layers -> observations
+			nn.addGroup(50);  //group 2
+			nn.addConnexion(2, 0);
+			nn.addConnexion(1, 2);
+			break;
+		}
 	}
 	nn.initialize();
 
+
+
 	// ANetwork
-	{
-		//ANode::wReg = .25f;
-		//ANode::wPriorStrength = .02f;
-		//ANode::observationImportance = .02f;
-		//ANode::certaintyDecay = .01f;
-		//ANode::xReg = .1f;
-
-		//ANetwork nn(datapointS, labelS);
-		//{
-		//	float target_density = .1f;
-		//	float density_strength = 2.f;
-		//	float target_freqency = .2f;
-		//	float freqency_strength = 1.f;
-		//	int nNodes = 300;
-		//	Assembly* a2 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
-		//	nn.addAssembly(a2);
-		//	Assembly* a3 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
-		//	nn.addAssembly(a3);
-		//	//Assembly* a4 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
-		//	//nn.addAssembly(a4);
-
-		//	//nn.addConnexion(2, 0, .2f);
-		//	//nn.addConnexion(2, 1, 1.f);
-		//	//nn.addConnexion(2, 2, 1.f);
-
-		//	//nn.addConnexion(2, 0, 1.f);
-		//	//nn.addConnexion(2, 1, 1.f);
-		//	//nn.addConnexion(2, 2, 1.f);
-
-		//	float i_f = 1.f;
-		//	float o_f = 1.f;
-		//	nn.addConnexion(2, 0, 1.f);
-		//	nn.addConnexion(2, 1, o_f);
-		//	nn.addConnexion(3, 2, 1.f);
-		//	//nn.addConnexion(3, 1, o_f);
-		//	//nn.addConnexion(3, 3, i_f);
-		//	//nn.addConnexion(4, 3, o_f);
-		//	//nn.addConnexion(4, 1, 1.f);
-		//	//nn.addConnexion(4, 4, i_f);
-		//}
-		//int nTrainSteps = 4;
-		//int nTestSteps = 4;
-	}
+	
+	//ANode::wReg = .25f;
+	//ANode::wPriorStrength = .02f;
+	//ANode::observationImportance = .02f;
+	//ANode::certaintyDecay = .01f;
+	//ANode::xReg = .1f;
+	//ANetwork nn(datapointS, labelS);
+	//{
+	//	float target_density = .1f;
+	//	float density_strength = 2.f;
+	//	float target_freqency = .2f;
+	//	float freqency_strength = 1.f;
+	//	int nNodes = 300;
+	//	Assembly* a2 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
+	//	nn.addAssembly(a2);
+	//	//Assembly* a3 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
+	//	//nn.addAssembly(a3);
+	//	//Assembly* a4 = new Assembly(nNodes, target_density, density_strength, target_freqency, freqency_strength);
+	//	//nn.addAssembly(a4);
+	//	//nn.addConnexion(2, 0, .2f);
+	//	//nn.addConnexion(2, 1, 1.f);
+	//	//nn.addConnexion(2, 2, 1.f);
+	//	//nn.addConnexion(2, 0, 1.f);
+	//	//nn.addConnexion(2, 1, 1.f);
+	//	//nn.addConnexion(2, 2, 1.f);
+	//	float i_f = 1.f;
+	//	float o_f = 1.f;
+	//	nn.addConnexion(2, 0, 1.f);
+	//	nn.addConnexion(2, 1, o_f);
+	//	//nn.addConnexion(3, 2, 1.f);
+	//	//nn.addConnexion(3, 1, o_f);
+	//	//nn.addConnexion(3, 3, i_f);
+	//	//nn.addConnexion(4, 3, o_f);
+	//	//nn.addConnexion(4, 1, 1.f);
+	//	//nn.addConnexion(4, 4, i_f);
+	//}
+	//int nTrainSteps = 4;
+	//int nTestSteps = 4;
 
 
 
@@ -194,10 +197,10 @@ int main()
 
 	// one and only one must be set to  true
 	bool onePerClass = false;
-	bool onlineRandom = true;
+	bool onlineRandom = !false;
 	bool timeDependancy = false;
 	if (onePerClass) {
-		for (int u = 0; u < 1; u++) {
+		for (int u = 0; u < 2; u++) {
 			for (int i = 0; i < 10; i++) {
 				int id = 0;
 				while (trainShuffledLabels[id][i] != 1.0f) {
@@ -209,10 +212,12 @@ int main()
 		}
 	}
 	else if (onlineRandom){
-		for (int i = 0; i < 100; i++)
+		for (int i = 0; i < 1000; i++)
 		{
 			nn.learn(trainShuffledPoints[i], trainShuffledLabels[i], nTrainSteps);
-			if (i % 100 == 99) LOGL("Step " + std::to_string(i));
+			if (i % 100 == 99) {
+				LOGL("Step " + std::to_string(i));
+			}
 		}
 	}
 	else if (timeDependancy){

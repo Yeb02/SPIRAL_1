@@ -71,14 +71,21 @@ void ANode::updateActivation()
 		ANode& c = *children[k];
 
 		deltaE += w_variates[k] * ( (1.f - 2.0f * x) * w_variates[k] * (1.0f + c.localXReg) + 2.0f * (c.localXReg * c.mu  -  (c.x - c.mu) ));
-
 	}
 
-	float a = 1.0f, b = .00f;
-	float newX = deltaE < .0f ? 1.0f : 0.0f; // x=1 is preferred if it reduces the energy, i.e. deltaE = (E1 - E0) < 0. Otherwise x = 0.
-	newX = abs(deltaE) > b ? newX : x;
 
-	//float newX = deltaE>.0f ? 1.0f : 0.0f; // TODO proba
+	// DETERMINISTIC
+	//constexpr float threshold = .0f; // "hard" version of changeAversion in the probabilistic update
+	//float newX = deltaE < .0f ? 1.0f : 0.0f; // x=1 is preferred if it reduces the energy, i.e. deltaE = (E1 - E0) < 0. Otherwise x = 0.
+	//newX = abs(deltaE) > threshold ? newX : x;
+
+
+	// PROBABILISTIC
+	constexpr float changeAversion = .025f;	// >= 0. Aversion to change: the higher, the more likely we keep the same x despite a potential energy gain by switching
+	constexpr float steepness = 30.f;
+	float proba = .5f + .5f * tanhf(steepness * (deltaE + changeAversion * (x==0?1.f:-1.f) )); // Increases as E1-E0 increases, i.e. the higher proba the more desirable x = 0.
+	float newX = proba < UNIFORM_01 ? 1.0f : 0.0f;   
+
 
 
 	if (x == newX) { return; } // TODO [[likely]] ?
@@ -93,9 +100,7 @@ void ANode::updateActivation()
 #ifdef FREE_NODES
 		if (children[k]->isFree) [[unlikely]] {children[k]->x = children[k]->mu; }
 #endif
-		
 	}
-
 }
 
 
@@ -208,7 +213,7 @@ void ANode::addChildren(ANode** newChildren, int nNewChildren)
 	w_means.resize(children.size());
 	w_precisions.resize(children.size());
 
-	float amplitude = 1.f / sqrtf((float) children.size());
+	float amplitude = 1.f / sqrtf((float) children.size()); // very sensitive... TODO why ?
 
 	for (int i = (int) children.size() - nNewChildren; i < children.size(); i++)
 	{

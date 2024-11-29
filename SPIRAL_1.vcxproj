@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -22,6 +22,7 @@
     <ClCompile Include="source\ANetwork.cpp" />
     <ClCompile Include="source\ANode.cpp" />
     <ClCompile Include="source\Assembly.cpp" />
+    <ClCompile Include="source\Group.cpp" />
     <ClCompile Include="source\main.cpp" />
     <ClCompile Include="source\Network.cpp" />
     <ClCompile Include="source\Node.cpp" />
@@ -32,6 +33,7 @@
     <ClInclude Include="source\ANode.h" />
     <ClInclude Include="source\Assembly.h" />
     <ClInclude Include="source\config.h" />
+    <ClInclude Include="source\Group.h" />
     <ClInclude Include="source\MNIST.h" />
     <ClInclude Include="source\Network.h" />
     <ClInclude Include="source\Node.h" />

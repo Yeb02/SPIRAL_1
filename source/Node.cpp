@@ -19,17 +19,21 @@ constexpr float a = -1.f;
 constexpr float b = 1.f;
 
 
-Node::Node()
+Node::Node(Group* _group) :
+	group(_group)
 {
-	isFree = false;
-
-	parents.resize(0); // for completeness
-	inParentsListIDs.resize(0); // for completeness
-
+	// for completeness
+	parents.resize(0); 
+	inParentsListIDs.resize(0); 
 	children.resize(0);
-	
+	wx_variates.resize(0);
+	wx_precisions.resize(0);
+	wx_means.resize(0);
+
+
 	bx_mean = NORMAL_01 * .01f;
-	bx_precision = wxPriorStrength;
+	//bx_precision = .01f;
+	bx_precision = wxPriorStrength; 
 	bx_variate = bx_mean;
 
 
@@ -37,12 +41,12 @@ Node::Node()
 	x = mu;
 	fx = F(x);
 
-	tau = 1.0f;
-	compute_sw();
-
 	localXReg = xReg;
+#ifdef FREE_NODES
+	isFree = false;
+#endif
 
-	computeLocalQuantities();
+	epsilon = x - mu;
 }
 
 
@@ -61,8 +65,13 @@ void Node::addChildren(Node** newChildren, int nNewChildren, int specialCase)
 	wx_means.resize(children.size());
 	wx_precisions.resize(children.size());
 
-	float amplitude = .01f;
+
+	// TODO unfortunately initialization still has a strong influence on performance.
+	// Check that it is still the case in later versions of the algorithm.
+	//float amplitude = .01f; 
 	//float amplitude = .1f / sqrtf((float)(1 + (int)children.size()));
+	float amplitude = 1.f / sqrtf((float)(children.size() * children.back()->parents.size()));
+
 
 	for (int i = (int)children.size() - nNewChildren; i < children.size(); i++)
 	{
@@ -83,7 +92,8 @@ void Node::addChildren(Node** newChildren, int nNewChildren, int specialCase)
 
 void Node::XGradientStep() 
 {
-	float grad = (epsilon + x * localXReg) * tau;
+	float grad = (epsilon + x * localXReg) * group->tau; // TODO  xReg is better factored in the tau* (at least makes more sense) 
+	//float grad = epsilon * group->tau + x * localXReg; 
 
 
 #ifdef TANH
@@ -97,22 +107,22 @@ void Node::XGradientStep()
 
 	float grad_acc = .0f;
 
-	float H = tau * (1.f + localXReg);
+	float H = group->tau * (1.f + localXReg);
 	
 	for (int k = 0; k < children.size(); k++)
 	{
 		Node& c = *children[k];
 
-		grad_acc += - c.tau * c.epsilon * wx_variates[k];
+		grad_acc += - c.epsilon * wx_variates[k] * c.group->tau;
 		float fpw = wx_variates[k] * fprime;
 
 
 #ifdef TANH
-		float hk = c.tau * fpw * (fpw + 2 * c.epsilon * fx);
+		float hk = fpw * (fpw + 2 * c.epsilon * fx) * c.group->tau;
 #elif defined(QSIGMOIDE)
-		float hk = c.tau * fpw * (fpw + 4 * c.epsilon * (fx - .5f));
+		float hk = fpw * (fpw + 4 * c.epsilon * (fx - .5f)) * c.group->tau;
 #elif defined(ID)
-		float hk = c.tau * fpw * fpw;
+		float hk = fpw * fpw * c.group->tau;
 #endif
 
 		
@@ -138,7 +148,9 @@ void Node::XGradientStep()
 	fx += deltaFX;
 
 #ifdef ASYNCHRONOUS_UPDATES
-	epsilon = x - mu;
+	float _newEps = x - mu;
+	group->onOneEpsUpdated(epsilon, _newEps);
+	epsilon = _newEps;
 
 	for (int k = 0; k < children.size(); k++)
 	{
@@ -150,7 +162,13 @@ void Node::XGradientStep()
 		if (c.isFree) [[unlikely]] {c.x = c.mu; }
 #endif
 
-		c.computeLocalQuantities();
+		c.epsilon = c.x - c.mu;
+		c.group->newSumEps2 += c.epsilon * c.epsilon;
+	}
+
+	for (Group* cg : group->childrenGroups) 
+	{
+		cg->onSumEps2Recomputed();
 	}
 #endif 
 }
@@ -161,33 +179,30 @@ void Node::analyticalXUpdate()
 	float stvw = .0f, stw2=.0f;
 	for (int i = 0; i < children.size(); i++)
 	{
-		float tiwi = wx_variates[i] * children[i]->tau;
+		float tiwi = wx_variates[i] * children[i]->group->tau;
 		stw2 += tiwi * wx_variates[i];
 		float vi = children[i]->epsilon + wx_variates[i] * fx;
 		stvw += tiwi * vi;
 	}
 
 #ifdef REGXL1
-	float xstar = (tau * mu + stvw) / (tau + stw2 + localXReg);
-	xstar = F(xstar);
-	float Estar = tau * powf(xstar - mu, 2.0f) + xstar * (xstar * stw2 - 2.f * stvw) + localXReg; // +stv2
-	float E0 = tau * mu * mu; // +stv2
-	float bonus = .05f;
-	xstar = (E0 - bonus < Estar) ? 0.f : xstar;
+	float xstar = (group->tau * mu + stvw) / (stw2 + group->tau + localXReg * (1.0f + 1.f / abs(x + .001f)));
 #else
-	float xstar = (tau * mu + stvw) / (tau + stw2 + localXReg);
-	xstar = F(xstar);
+	float xstar = (group->tau * mu + stvw) / (stw2 + group->tau * (1.0f + localXReg)); // TODO  xReg is better factored in the tau* (at least makes more sense) 
+	//float xstar = (group->tau * mu + stvw) / (stw2 + group->tau + localXReg); // Test !!!!!!!!!!!!!!!
 #endif
+	xstar = F(xstar);
 
 	
 	x += (xstar - x) * xlr;
-
 
 	float deltaFX = F(x) - fx;
 	fx += deltaFX;
 
 #ifdef ASYNCHRONOUS_UPDATES
-	epsilon = x - mu;
+	float _newEps = x - mu;
+	group->onOneEpsUpdated(epsilon, _newEps);
+	epsilon = _newEps;
 
 	for (int k = 0; k < children.size(); k++)
 	{
@@ -199,7 +214,13 @@ void Node::analyticalXUpdate()
 		if (c.isFree) [[unlikely]] {c.x = c.mu; }
 #endif
 		
-		c.computeLocalQuantities();
+		c.epsilon = c.x - c.mu;
+		c.group->newSumEps2 += c.epsilon * c.epsilon;
+	}
+
+	for (Group* cg : group->childrenGroups)
+	{
+		cg->onSumEps2Recomputed();
 	}
 #endif 
 }
@@ -207,6 +228,11 @@ void Node::analyticalXUpdate()
 
 void Node::setAnalyticalWX()
 {
+#ifdef REGWL1
+	const float relativeL1Strength = .1f;
+	const float minW = .001f;
+#endif
+
 	float s1 = 1.0f / bx_precision;
 	float s2 = bx_mean;
 
@@ -215,14 +241,18 @@ void Node::setAnalyticalWX()
 	{
 		int id = inParentsListIDs[i];
 		float fi = parents[i]->fx;
+#ifdef REGWL1
+		float t1 = fi / (parents[i]->wx_precisions[id] + wxReg * REGWX * (1.f + relativeL1Strength / (abs(parents[i]->wx_means[id]) + minW)) );
+#else
 		float t1 = fi / (parents[i]->wx_precisions[id] + wxReg * REGWX);
+#endif
 
 		s1 += fi * t1;
 		s2 += t1 * parents[i]->wx_means[id] * parents[i]->wx_precisions[id];
 	}
 
-	// Either tau = 1, and this does nothing, or tau is computed in compute_sw, in which case it performs worse with this.
-	//s1 *= tau;
+	// TODO should probably be commented out with the current use of tau
+	//s1 *= group->tau;
 
 
 
@@ -238,8 +268,12 @@ void Node::setAnalyticalWX()
 		float fi = parents[i]->fx;
 		float tau_i = parents[i]->wx_precisions[id];
 
-
+#ifdef REGWL1
+		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id])/(tau_i + 
+			wxReg * REGWX * (1.f + relativeL1Strength / (abs(parents[i]->wx_means[id]) + minW)) );
+#else
 		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id])/(tau_i + wxReg * REGWX);
+#endif
 
 
 		sw2 += powf(parents[i]->wx_variates[id], 2.0f);
@@ -261,11 +295,11 @@ void Node::calcifyWB()
 {
 	for (int k = 0; k < children.size(); k++)
 	{
-		wx_precisions[k] += fx * fx * (- wx_precisions[k] * certaintyDecay + observationImportance) * children[k]->tau; //   * children[k]->tau
+		wx_precisions[k] += fx * fx * (-wx_precisions[k] * certaintyDecay + observationImportance); // TODO * children[k]->group->tau ? probably not
 		wx_means[k] = wx_variates[k];
 	}
 
-	bx_precision += (- bx_precision * certaintyDecay + observationImportance) * tau; // tau *
+	bx_precision += (- bx_precision * certaintyDecay + observationImportance); // TODO * group->tau ? probably not
 	bx_mean = bx_variate;
 }
 
@@ -276,10 +310,10 @@ void Node::predictiveCodingWxGradientStep()
 
 	for (int k = 0; k < children.size(); k++)
 	{
-		wx_variates[k] -= wlr * fx * -children[k]->epsilon * children[k]->tau + wxReg * wx_variates[k];
+		wx_variates[k] -= wlr * (fx * -children[k]->epsilon + wxReg * wx_variates[k]);
 	}
 
-	bx_variate -= wlr * -epsilon * tau;
+	bx_variate -= wlr * -epsilon;
 }
 
 
@@ -294,10 +328,6 @@ void Node::setActivation(float newX)
 	for (int k = 0; k < children.size(); k++)
 	{
 		children[k]->mu += deltaFX * wx_variates[k];
-
-#ifdef FREE_NODES
-		if (children[k]->isFree) [[unlikely]] {children[k]->x = children[k]->mu; }
-#endif
 	}
 }
 
@@ -313,24 +343,3 @@ void Node::transmitPredictions()
 		children[k]->mu += fx * wx_variates[k];
 	}
 }
-
-void Node::computeLocalQuantities() 
-{
-#ifdef FREE_NODES
-	if (isFree) [[unlikely]] {x = mu;}
-#endif
-	
-	epsilon = x - mu;
-}
-
-
-
-void Node::compute_sw() 
-{
-	//tau = children.size() == 0 ? 1.0f : 0.0f;
-	//for (int i = 0; i < children.size(); i++) tau += powf(wx_variates[i] * children[i]->tau, 2.0f);
-	//tau = sqrtf(tau);
-	
-	//tau = std::min(tau, 1.0f);
-}
-

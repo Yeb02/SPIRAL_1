@@ -1,5 +1,8 @@
 #pragma once
 
+// all "source" headers must include this file
+
+
 #include "Random.h"
 #include "config.h"
 

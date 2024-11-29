@@ -1,9 +1,9 @@
 #pragma once
 
 #include "SPIRAL_includes.h"
+#include "Group.h"
 
-// Be careful as epsilons are never completely recomputed and need be changed everytime any quantity involved in their
-// formula is updated: the bias/activation, or the parents weigths/activations. Same for dynamic taus.
+
 class Node 
 {
 public:
@@ -18,9 +18,12 @@ public:
 	static float observationImportance;
 	static float certaintyDecay;
 
+
 	float localXReg; // set at 0 for observation/label nodes by the parent network, xReg otherwise
 
+#ifdef FREE_NODES
 	bool isFree; // set to true for nodes that must be inferred and do not have children. Typically the label.
+#endif
 
 	std::vector<Node*> children;
 	std::vector<Node*> parents;
@@ -36,12 +39,14 @@ public:
 	std::vector<float> wx_precisions;
 
 
-	float x, fx, tau, epsilon, mu;
+	float x, fx, epsilon, mu;
+
+
+	Group* group;
 
 
 
-
-	Node();
+	Node(Group* _group);
 
 	~Node() {};
 
@@ -66,32 +71,18 @@ public:
 	void calcifyWB();
 
 
-	// For weights normalization. Has not shown improvements, so its content can be commented out
-	void compute_sw();
-
-
-
-	// For benchmarking purposes
+	// For benchmarking purposes, the original predictive coding algorithm can be used. See config.h 
 	void predictiveCodingWxGradientStep();
 
 
 
-
-
-	// Updates the children's predicted quantities (mu and t) as well, which requires them to be up to date 
-	// relative to the current parameters ! 
-	// And a call to computeLocalQuantities must be performed afterwards by the children !
+	// Updates this node's x, eps, fx, and propagates the new fx to the children's mu. Does not update the children's epsilon !
+	// Used only by the parent Network when clamping to obseration values.
 	void setActivation(float newX);
 
-	// sets up (i.e. intitializes accumulators with the biases) this node to receive and 
-	// make sense of prediction information regarding its mu and t
+	// intitializes mu to the bias, to then receive w*fx from the parents 
 	void prepareToReceivePredictions();
 
-	// sends relevant information to the children for their mu and tau
+	// sends w*fx to the children for their mus
 	void transmitPredictions();
-
-	// Sets all values depending directly on the raw predictions that the parent sent:
-	// epsilon, tau.
-	void computeLocalQuantities();
-
 };

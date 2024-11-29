@@ -8,27 +8,31 @@ Network::Network(int _datapointSize, int _labelSize) :
 
 	output = new float[labelSize];
 
-	int initialnNodes = datapointSize + labelSize;
-	nodes.resize(initialnNodes);
-	for (int i = 0; i < initialnNodes; i++)
-	{
-		nodes[i] = new Node();
-	}
-
-	groupSizes.push_back(datapointSize);
-	groupSizes.push_back(labelSize);
+	groups.push_back(new Group(datapointSize, 0));
+	groups.push_back(new Group(labelSize, 1));
 
 	groupOffsets.push_back(0);
 	groupOffsets.push_back(datapointSize);
 
-#ifdef FREE_NODES
-	freeGroups.push_back(0);
-	freeGroups.push_back(1);
-#endif 
+
+	int initialnNodes = datapointSize + labelSize;
+	nodes.resize(initialnNodes);
+
+
+	for (int i = 0; i < datapointSize; i++)
+	{
+		nodes[i] = new Node(groups[0]);
+	}
+	for (int i = datapointSize; i < initialnNodes; i++)
+	{
+		nodes[i] = new Node(groups[1]);
+	}
+
 
 	for (int j = 0; j < initialnNodes; j++) {
 		nodes[j]->localXReg = 0.f; // no regularisation for the observations. (label and datapoint)
 	}
+
 
 	isInitialized = false;
 	learningMode = false;
@@ -39,9 +43,15 @@ Network::Network(int _datapointSize, int _labelSize) :
 Network::~Network() 
 {
 	delete[] output;
+
 	for (int i = 0; i < nodes.size(); i++)
 	{
 		delete nodes[i];
+	}
+
+	for (int i = 0; i < groups.size(); i++)
+	{
+		delete groups[i];
 	}
 }
 
@@ -56,29 +66,40 @@ void Network::initialize()
 	{
 		nodes[i]->transmitPredictions();
 	}
-	for (int i = 0; i < nodes.size(); i++)
+
+
+	for (int i = 0; i < groups.size(); i++)
 	{
-		nodes[i]->computeLocalQuantities();
-	}
-
-
 #ifdef FREE_NODES
-	for (int i = 0; i < groupSizes.size(); i++)
-	{
-		if (!freeGroups[i]) continue;
-		for (int j = groupOffsets[i]; j < groupOffsets[i] + groupSizes[i]; j++)
-		{
-			nodes[j]->isFree = true;
-			nodes[j]->x = nodes[j]->mu;
-			nodes[j]->epsilon = .0f;
-		}
-	}
+		bool _freeGroup = false;
+		if ((int) groups[i]->childrenGroups.size() == 0) _freeGroup = true;
 #endif
 
-	for (int i = 0; i < nodes.size(); i++)
-	{
-		nodes[i]->compute_sw();
+		float _sumEps2 = .0f;
+		for (int j = groupOffsets[i]; j < groupOffsets[i] + groups[i]->nNodes; j++)
+		{
+			nodes[j]->epsilon = nodes[j]->x - nodes[j]->mu;
+
+#ifdef FREE_NODES
+			if (_freeGroup) {
+				nodes[j]->isFree = true;
+				nodes[j]->x = nodes[j]->mu;
+				nodes[j]->epsilon = .0f;
+			}
+#endif
+
+			groups[i]->newSumEps2 += nodes[j]->epsilon * nodes[j]->epsilon;
+		}
+
+		groups[i]->onSumEps2Recomputed();
 	}
+
+#ifdef FREE_NODES // the "observation" group is never free in our setting.
+	for (int j = groupOffsets[0]; j < groupOffsets[0] + groups[0]->nNodes; j++)
+	{
+		nodes[j]->isFree = false;
+	}
+#endif
 
 	isInitialized = true;
 }
@@ -130,7 +151,7 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		}
 		for (int i = 0; i < nodes.size(); i++)
 		{
-			nodes[i]->computeLocalQuantities();
+			nodes[i]->epsilon = nodes[i]->x - nodes[i]->mu;
 		}
 #endif
 
@@ -149,22 +170,12 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
-		
-		if (i == 0) {
-			float _aa = 0.0f;
-		}
 		nodes[i]->setAnalyticalWX();
 	}
 	
-
 	for (int i = 0; i < nodes.size(); i++)
 	{
 		nodes[i]->calcifyWB();
-	}
-
-	for (int i = 0; i < nodes.size(); i++)
-	{
-		nodes[i]->compute_sw();
 	}
 #endif
 }
@@ -219,14 +230,14 @@ void Network::evaluate(float* _datapoint, int nSteps)
 		}
 		for (int i = 0; i < nodes.size(); i++)
 		{
-			nodes[i]->computeLocalQuantities();
+			nodes[i]->epsilon = nodes[i]->x - nodes[i]->mu;
 		}
 #endif
 
 		//float currentEnergy = computeTotalActivationEnergy();
 		//previousEnergy = currentEnergy;
 	}
-	//LOG(previousEnergy);
+	//LOG(previousEnergy << "\n");
 
 	for (int i = 0; i < labelSize; i++)
 	{
@@ -248,14 +259,21 @@ float Network::computeTotalActivationEnergy()
 	return E2;
 }
 
+
 void Network::setActivities(float* _datapoint, float* _label)
 {
+	std::vector<int> changedGroups(groups.size()); // The groups whose epsilons are changed by this function.
+	std::fill(changedGroups.begin(), changedGroups.end(), 0);
 
 	if (_datapoint != nullptr)
 	{
 		for (int i = 0; i < datapointSize; i++)
 		{
 			nodes[i]->setActivation(_datapoint[i]);
+		}
+		changedGroups[0] = 1;
+		for (Group* g : groups[0]->childrenGroups) {
+			changedGroups[g->id] = 1;
 		}
 	}
 	if (_label != nullptr)
@@ -264,39 +282,56 @@ void Network::setActivities(float* _datapoint, float* _label)
 		{
 			nodes[i + datapointSize]->setActivation(_label[i]);
 		}
+		changedGroups[1] = 1;
+		for (Group* g : groups[1]->childrenGroups) {
+			changedGroups[g->id] = 1;
+		}
 	}
 
-	// inefficient, but no easy way to do much better
-	for (int i = 0; i < nodes.size(); i++)
+	
+	for (int i = 0; i < groups.size(); i++)
 	{
-		nodes[i]->computeLocalQuantities(); 
+		if (changedGroups[i] == 0) continue;
+
+		
+		for (int j = groupOffsets[i]; j < groupOffsets[i] + groups[i]->nNodes; j++) 
+		{
+#ifdef FREE_NODES
+			if (nodes[i]->isFree) [[unlikely]] {nodes[i]->x = nodes[i]->mu; }
+#endif
+			nodes[i]->epsilon = nodes[i]->x - nodes[i]->mu;
+
+			groups[i]->newSumEps2 += nodes[i]->epsilon * nodes[i]->epsilon;
+		}
+
+		groups[i]->onSumEps2Recomputed();
 	}
+
+
 }
 
 
 
 void Network::addGroup(int nNodes)
 {
-	groupOffsets.push_back(groupOffsets.back() + groupSizes.back());
-	groupSizes.push_back(nNodes);
+	groupOffsets.push_back(groupOffsets.back() + (int)groups.back()->nNodes);
+	groups.push_back(new Group(nNodes, (int)groups.size()));
 
 	nodes.resize(nodes.size() + nNodes);
-	for (int i = groupOffsets.back(); i < groupOffsets.back() + groupSizes.back(); i++)
+	for (int i = groupOffsets.back(); i < groupOffsets.back() + nNodes; i++)
 	{
-		nodes[i] = new Node();
+		nodes[i] = new Node(groups.back());
 	}
-
-#ifdef FREE_NODES
-	freeGroups.push_back(1);
-#endif 
 
 	isInitialized = false;
 }
 
 void Network::addConnexion(int originGroup, int destinationGroup)
 {
-	int nC = groupSizes[destinationGroup];
-	int nP = groupSizes[originGroup];
+	int nC = (int) groups[destinationGroup]->nNodes;
+	int nP = (int) groups[originGroup]->nNodes;
+
+	groups[originGroup]->childrenGroups.push_back(groups[destinationGroup]);
 
 	Node** children = nodes.data() + groupOffsets[destinationGroup];
 	Node** parents = nodes.data() + groupOffsets[originGroup];
@@ -322,10 +357,6 @@ void Network::addConnexion(int originGroup, int destinationGroup)
 		parents[i]->addChildren(children, nC, (specialCase ? i : -1));
 	}
 
-
-#ifdef FREE_NODES
-	freeGroups[originGroup] = 0;
-#endif 
 	isInitialized = false;
 }
 
@@ -340,7 +371,7 @@ void Network::readyForLearning()
 
 
 #ifdef FREE_NODES
-	for (int j = groupOffsets[1]; j < groupOffsets[1] + groupSizes[1]; j++)
+	for (int j = groupOffsets[1]; j < groupOffsets[1] + groups[1]->nNodes; j++)
 	{
 		nodes[j]->isFree = false;
 	}
@@ -366,7 +397,7 @@ void Network::readyForTesting()
 
 
 #ifdef FREE_NODES
-	for (int j = groupOffsets[1]; j < groupOffsets[1] + groupSizes[1]; j++)
+	for (int j = groupOffsets[1]; j < groupOffsets[1] + groups[1]->nNodes; j++)
 	{
 		nodes[j]->isFree = true;
 		nodes[j]->x = nodes[j]->mu;
