@@ -44,7 +44,7 @@
 
 // Not exactly an L1 reg, because there is no analytical closed form. The L2 regularisation is still used in parallel.
 // Tweak the parameters in Node::setAnalyticalWX .
-#define REGWL1
+//#define REGWL1
 
 
 // Influence on results ? Seems like none ... Somewhat surprising, insight may be gained from understanding why.
@@ -60,30 +60,45 @@
 
 
 
+// An attempt at mitigating H2, aka the free energy gained by lowering epsilons and increasing weights.
+// Optional, and mutually exclusive.
+#define HOMOEPS_STATIC  // Relatively inexpensive, much better on paper
+#ifndef HOMOEPS_STATIC
+#define HOMOEPS_DYNAMIC
+#endif
 
 
-// Not exactly vanilla topology, as the label and datapoint are still both at the bottom ( TODO an option to test label on top as well )
+
 // The wlr parameter is in the node::predictiveCodingWxGradientStep() function's definition.
-// Make sure that the right topology is picked in main. (I.e. label on top, datapoint at the bottom)
+// Make sure that the right topology is picked in main. (I.e. label on top, datapoint at the bottom, topo = 3)
 
 //#define VANILLA_PREDICTIVE_CODING
 
-#ifdef VANILLA_PREDICTIVE_CODING // Do not modify what is in this #if. Some of the undefined directives are compatible, but this is only for benchmarks so dont bother
+#ifdef VANILLA_PREDICTIVE_CODING // Do not modify what is in this #if. 
 
 #undef ASYNCHRONOUS_UPDATES
+
 #define NO_SECOND_ORDER 
+#undef SECOND_ORDER_TAU
+#undef SECOND_ORDER_MAX
 #undef SECOND_ORDER_L1
-#undef ANALYTICAL_X
-#undef DYNAMIC_PRECISIONS
-#undef FIXED_PRECISIONS_BUT_CONTRIBUTE
-#undef ASYNCHRONOUS_UPDATES
+
+#undef REGXL1
+#undef REGWL1
 #undef REGWX
 #define REGWX 1.0f
+
+#undef ANALYTICAL_X
 #undef QSIGMOIDE
 #undef ID
 #define TANH
 #undef F
 #define F(x) tanhf(x)
+
+#undef FREE_NODES
+
+#undef HOMOEPS_STATIC
+#undef HOMOEPS_DYNAMIC
 
 #endif
 

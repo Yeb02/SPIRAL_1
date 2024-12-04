@@ -106,7 +106,7 @@ int main()
 #endif
 
 	Network nn(datapointS, labelS); // datapoint is group 0, label is group 1.
-	int topo = 1;
+	int topo = 0;
 
 	switch (topo) {
 		case 0: {

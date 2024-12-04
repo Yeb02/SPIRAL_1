@@ -229,7 +229,7 @@ void Node::analyticalXUpdate()
 void Node::setAnalyticalWX()
 {
 #ifdef REGWL1
-	const float relativeL1Strength = .1f;
+	const float relativeL1Strength = .3f;
 	const float minW = .001f;
 #endif
 
@@ -256,7 +256,9 @@ void Node::setAnalyticalWX()
 
 
 
-	epsilon = (x - s2) / (1.f + s1);
+	float _newEps = (x - s2) / (1.f + s1);
+	group->onOneEpsUpdated(epsilon, _newEps);
+	epsilon = _newEps;
 	mu = x - epsilon;
 
 	float sw2 = .0f;
