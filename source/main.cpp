@@ -86,15 +86,15 @@ int main()
 
 
 
-	Node::xlr = 1.f;
+	Node::xlr = .5f; 
 	Node::wxPriorStrength = 1.f;
 	Node::observationImportance = 1.f;
 	Node::certaintyDecay = .01f;
 	Node::xReg  = 0.1f;   
 	Node::wxReg = 0.1f;  // Hinders performance ?? REGL1 necessary to find the "correct" biases.
 
-	int nTrainSteps = 4; // Suprisingly, less steps leads to much better results.
-	int nTestSteps = 4;
+	int nTrainSteps = 5; // Suprisingly, less steps leads to much better results.
+	int nTestSteps = 5;
 
 
 #ifdef VANILLA_PREDICTIVE_CODING
@@ -117,6 +117,9 @@ int main()
 			nn.addConnexion(3, 2);
 			nn.addConnexion(2, 1);
 			nn.addConnexion(2, 0);
+			//nn.addConnexion(1, 1);
+			//nn.addConnexion(1, 2);
+			//nn.addConnexion(2, 4);
 			break;
 		}
 		case 1: {
@@ -212,7 +215,7 @@ int main()
 		}
 	}
 	else if (onlineRandom){
-		for (int i = 0; i < 1000; i++)
+		for (int i = 0; i < 1500; i++)
 		{
 			nn.learn(trainShuffledPoints[i], trainShuffledLabels[i], nTrainSteps);
 			if (i % 100 == 99) {

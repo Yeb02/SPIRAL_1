@@ -113,16 +113,17 @@ void Node::XGradientStep()
 	{
 		Node& c = *children[k];
 
-		grad_acc += - c.epsilon * wx_variates[k] * c.group->tau;
+		// Because of the current signification of tau, the children's taus are ignored
+		grad_acc += -c.epsilon * wx_variates[k]; // *c.group->tau;
 		float fpw = wx_variates[k] * fprime;
 
 
 #ifdef TANH
-		float hk = fpw * (fpw + 2 * c.epsilon * fx) * c.group->tau;
+		float hk = fpw * (fpw + 2 * c.epsilon * fx); // *c.group->tau;
 #elif defined(QSIGMOIDE)
-		float hk = fpw * (fpw + 4 * c.epsilon * (fx - .5f)) * c.group->tau;
+		float hk = fpw * (fpw + 4 * c.epsilon * (fx - .5f)); //* c.group->tau;
 #elif defined(ID)
-		float hk = fpw * fpw * c.group->tau;
+		float hk = fpw * fpw; //* c.group->tau;
 #endif
 
 		
@@ -148,9 +149,7 @@ void Node::XGradientStep()
 	fx += deltaFX;
 
 #ifdef ASYNCHRONOUS_UPDATES
-	float _newEps = x - mu;
-	group->onOneEpsUpdated(epsilon, _newEps);
-	epsilon = _newEps;
+	epsilon = x - mu;
 
 	for (int k = 0; k < children.size(); k++)
 	{
@@ -163,12 +162,6 @@ void Node::XGradientStep()
 #endif
 
 		c.epsilon = c.x - c.mu;
-		c.group->newSumEps2 += c.epsilon * c.epsilon;
-	}
-
-	for (Group* cg : group->childrenGroups) 
-	{
-		cg->onSumEps2Recomputed();
 	}
 #endif 
 }
@@ -179,7 +172,7 @@ void Node::analyticalXUpdate()
 	float stvw = .0f, stw2=.0f;
 	for (int i = 0; i < children.size(); i++)
 	{
-		float tiwi = wx_variates[i] * children[i]->group->tau;
+		float tiwi = wx_variates[i];  //*children[i]->group->tau; Because of the current signification of tau, the children's taus are ignored
 		stw2 += tiwi * wx_variates[i];
 		float vi = children[i]->epsilon + wx_variates[i] * fx;
 		stvw += tiwi * vi;
@@ -200,9 +193,7 @@ void Node::analyticalXUpdate()
 	fx += deltaFX;
 
 #ifdef ASYNCHRONOUS_UPDATES
-	float _newEps = x - mu;
-	group->onOneEpsUpdated(epsilon, _newEps);
-	epsilon = _newEps;
+	epsilon = x - mu;
 
 	for (int k = 0; k < children.size(); k++)
 	{
@@ -215,13 +206,8 @@ void Node::analyticalXUpdate()
 #endif
 		
 		c.epsilon = c.x - c.mu;
-		c.group->newSumEps2 += c.epsilon * c.epsilon;
 	}
 
-	for (Group* cg : group->childrenGroups)
-	{
-		cg->onSumEps2Recomputed();
-	}
 #endif 
 }
 
@@ -254,11 +240,7 @@ void Node::setAnalyticalWX()
 	// TODO should probably be commented out with the current use of tau
 	//s1 *= group->tau;
 
-
-
-	float _newEps = (x - s2) / (1.f + s1);
-	group->onOneEpsUpdated(epsilon, _newEps);
-	epsilon = _newEps;
+	epsilon = (x - s2) / (1.f + s1);
 	mu = x - epsilon;
 
 	float sw2 = .0f;
@@ -322,7 +304,7 @@ void Node::predictiveCodingWxGradientStep()
 void Node::setActivation(float newX)
 {
 	x = newX;
-	epsilon = x - mu;
+	epsilon = x - mu; // the group's tracking of epsilons is handled by the only function that calls this one, Network::setActivities .
 
 	float deltaFX = F(x) - fx;
 	fx += deltaFX;

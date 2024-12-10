@@ -1,37 +1,43 @@
 #include "Group.h"
 
 
-Group::Group(int _nNodes, int _id) :
-	id(_id)
-{
-	nNodes = (float)_nNodes;
-
-	sumEps2 = .0f;
-	tau = 1.0f;
-
-	newSumEps2 = .0f; 
-};
-
 constexpr float tauMin = .001f;
 constexpr float tauMax = 1000.0f;
 //constexpr float tauMin = 1.f;
 //constexpr float tauMax = 1.f;
 
-void Group::onOneEpsUpdated(float oldEps, float newEps)
+Group::Group(int _nNodes, int _id) :
+	id(_id)
 {
-	float _delta = newEps * newEps - oldEps * oldEps;
-	sumEps2 += _delta;
+	nNodes = (float)_nNodes;
 
-	tau = std::clamp(sumEps2 / nNodes, tauMin, tauMax);
+	sumEps2 = -1.0f;
+	avgEps2 = -1.0f;
+
+	tau = 1.0f;
+	logTau = .0f;
+	age = 10.f;
 };
 
 
-void Group::onSumEps2Recomputed()
+void Group::updateTau()
 {
-	float _delta = newSumEps2 - sumEps2;
-	sumEps2 = newSumEps2;
+	avgEps2 = sumEps2 / nNodes;
 
-	tau = std::clamp(sumEps2 / nNodes, tauMin, tauMax);
+	if (childrenGroups.size() == 0) return;
 
-	newSumEps2 = .0f;
+	float avgChildrenEps2 = .0f;
+	float nChildren = .0f;
+	for (int i = 0; i < childrenGroups.size(); i++) 
+	{
+		avgChildrenEps2 += childrenGroups[i]->sumEps2;
+		nChildren += childrenGroups[i]->nNodes;
+	}
+	avgChildrenEps2 /= nChildren;
+
+	logTau += logf(avgEps2 / avgChildrenEps2) / age;
+	age = age * .99f + 1.f;
+
+	tau = expf(logTau);
 }
+

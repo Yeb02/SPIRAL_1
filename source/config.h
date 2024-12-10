@@ -7,9 +7,9 @@
 #define SECOND_ORDER_L1
 
 
-// If enabled, inference is a coordinate ascent is performed on the activation, with a random order each sweep.
+// If enabled, inference is a coordinate ascent performed on the activation, with a random order each sweep.
 // If disabled, the X updates are "parallel", i.e. virtually simultaneous across the network, like in vanilla predictive coding.
-#define ASYNCHRONOUS_UPDATES 
+//#define ASYNCHRONOUS_UPDATES 
 
 
 
@@ -61,11 +61,8 @@
 
 
 // An attempt at mitigating H2, aka the free energy gained by lowering epsilons and increasing weights.
-// Optional, and mutually exclusive.
-#define HOMOEPS_STATIC  // Relatively inexpensive, much better on paper
-#ifndef HOMOEPS_STATIC
-#define HOMOEPS_DYNAMIC
-#endif
+// Optional. Negligible computational overhead.
+#define HOMOEPS 
 
 
 

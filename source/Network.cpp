@@ -75,7 +75,6 @@ void Network::initialize()
 		if ((int) groups[i]->childrenGroups.size() == 0) _freeGroup = true;
 #endif
 
-		float _sumEps2 = .0f;
 		for (int j = groupOffsets[i]; j < groupOffsets[i] + groups[i]->nNodes; j++)
 		{
 			nodes[j]->epsilon = nodes[j]->x - nodes[j]->mu;
@@ -87,11 +86,8 @@ void Network::initialize()
 				nodes[j]->epsilon = .0f;
 			}
 #endif
-
-			groups[i]->newSumEps2 += nodes[j]->epsilon * nodes[j]->epsilon;
 		}
 
-		groups[i]->onSumEps2Recomputed();
 	}
 
 #ifdef FREE_NODES // the "observation" group is never free in our setting.
@@ -102,6 +98,8 @@ void Network::initialize()
 #endif
 
 	isInitialized = true;
+	learningMode = false;
+	testingMode = false;
 }
 
 
@@ -117,7 +115,7 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 
 	if (!learningMode)
 	{
-		LOG("Network must be switched in learning mode before learning. Call readyForLearning()");
+		LOG("Network must be switched to learning mode before learning. Call readyForLearning()");
 		return;
 	}
 
@@ -130,6 +128,7 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 	{
 		//LOG(previousEnergy);
 
+#ifdef ASYNCHRONOUS_UPDATES
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < nodes.size() - nClamped; i++)
 		{
@@ -139,8 +138,17 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 			nodes[permutation[i]]->XGradientStep();
 #endif 
 		}
+#else //ASYNCHRONOUS_UPDATES
 
-#ifndef ASYNCHRONOUS_UPDATES
+		for (int i = nClamped; i < nodes.size(); i++)
+		{
+#ifdef ANALYTICAL_X
+			nodes[i]->analyticalXUpdate();
+#else
+			nodes[i]->XGradientStep();
+#endif 
+		}
+
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			nodes[i]->prepareToReceivePredictions();
@@ -153,7 +161,8 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		{
 			nodes[i]->epsilon = nodes[i]->x - nodes[i]->mu;
 		}
-#endif
+#endif // ASYNCHRONOUS_UPDATES
+
 
 		//float currentEnergy = computeTotalActivationEnergy();
 		//previousEnergy = currentEnergy;
@@ -161,12 +170,13 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 	//LOG(previousEnergy << "\n\n");
 
 
+
 #ifdef VANILLA_PREDICTIVE_CODING 
 	for (int i = 0; i < nodes.size(); i++)
 	{
 		nodes[i]->predictiveCodingWxGradientStep();
 	}
-#else
+#else //VANILLA_PREDICTIVE_CODING
 
 	for (int i = 0; i < nodes.size(); i++)
 	{
@@ -177,7 +187,24 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 	{
 		nodes[i]->calcifyWB();
 	}
+
+#ifdef HOMOEPS
+	for (int i = 0; i < groups.size(); i++)
+	{
+		groups[i]->sumEps2 = .0f;
+		for (int j = groupOffsets[i]; j < groupOffsets[i] + groups[i]->nNodes; j++) 
+		{
+			groups[i]->sumEps2 += nodes[j]->epsilon * nodes[j]->epsilon;
+		}
+	}
+
+	for (int i = 0; i < groups.size(); i++)
+	{
+		groups[i]->updateTau();
+	}
 #endif
+
+#endif //VANILLA_PREDICTIVE_CODING
 }
 
 void Network::evaluate(float* _datapoint, int nSteps) 
@@ -191,7 +218,7 @@ void Network::evaluate(float* _datapoint, int nSteps)
 
 	if (!testingMode)
 	{
-		LOG("Network must be switched in testing mode before testing. Call readyForTesting()");
+		LOG("Network must be switched to testing mode before testing. Call readyForTesting()");
 		return;
 	}
 
@@ -206,7 +233,7 @@ void Network::evaluate(float* _datapoint, int nSteps)
 	{
 		//LOG(previousEnergy);
 
-
+#ifdef ASYNCHRONOUS_UPDATES
 		std::shuffle(permutation.begin(), permutation.end(), generator);
 		for (int i = 0; i < nodes.size() - nClamped; i++)
 		{
@@ -217,9 +244,17 @@ void Network::evaluate(float* _datapoint, int nSteps)
 #endif 
 		}
 
-	
+#else // ASYNCHRONOUS_UPDATES
 
-#ifndef ASYNCHRONOUS_UPDATES
+		for (int i = nClamped; i < nodes.size(); i++)
+		{
+#ifdef ANALYTICAL_X
+			nodes[i]->analyticalXUpdate();
+#else
+			nodes[i]->XGradientStep();
+#endif 
+		}
+
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			nodes[i]->prepareToReceivePredictions();
@@ -232,7 +267,7 @@ void Network::evaluate(float* _datapoint, int nSteps)
 		{
 			nodes[i]->epsilon = nodes[i]->x - nodes[i]->mu;
 		}
-#endif
+#endif // ASYNCHRONOUS_UPDATES
 
 		//float currentEnergy = computeTotalActivationEnergy();
 		//previousEnergy = currentEnergy;
@@ -243,6 +278,18 @@ void Network::evaluate(float* _datapoint, int nSteps)
 	{
 		output[i] = nodes[datapointSize + i]->x;
 	}
+
+#ifdef HOMOEPS  // just for monitoringpurposes. Useless otherwise.
+	for (int i = 0; i < groups.size(); i++)
+	{
+		groups[i]->sumEps2 = .0f;
+		for (int j = groupOffsets[i]; j < groupOffsets[i] + groups[i]->nNodes; j++)
+		{
+			groups[i]->sumEps2 += nodes[j]->epsilon * nodes[j]->epsilon;
+		}
+		groups[i]->avgEps2 = groups[i]->sumEps2 / groups[i]->nNodes;
+	}
+#endif
 }
 
 
@@ -293,21 +340,14 @@ void Network::setActivities(float* _datapoint, float* _label)
 	{
 		if (changedGroups[i] == 0) continue;
 
-		
 		for (int j = groupOffsets[i]; j < groupOffsets[i] + groups[i]->nNodes; j++) 
 		{
 #ifdef FREE_NODES
 			if (nodes[i]->isFree) [[unlikely]] {nodes[i]->x = nodes[i]->mu; }
 #endif
 			nodes[i]->epsilon = nodes[i]->x - nodes[i]->mu;
-
-			groups[i]->newSumEps2 += nodes[i]->epsilon * nodes[i]->epsilon;
 		}
-
-		groups[i]->onSumEps2Recomputed();
 	}
-
-
 }
 
 
