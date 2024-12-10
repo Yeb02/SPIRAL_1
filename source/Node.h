@@ -70,6 +70,26 @@ public:
 
 	void calcifyWB();
 
+#ifdef ADVANCED_W_IMPORTANCE
+	float factor;
+	void computeFactor() 
+	{
+		float sumOutgoingW2 = .0f;
+		// wx_variates not wx_means since where this functions is called, wx_means are not yet updated
+		for (int i = 0; i < children.size(); i++) sumOutgoingW2 += wx_variates[i] * wx_variates[i];
+
+		factor = .1f + sumOutgoingW2 / ((1.f + localXReg) * group->tau + sumOutgoingW2);
+
+		bool xUnchanged = ((int)children.size() == 0); 
+		//xUnchanged |= (abs(x) == 1.f); // if this node is saturated, its x* is probably not going to change when one of the afferent w changes slightly
+		if (xUnchanged) factor = 1.f;
+
+#ifdef FREE_NODES
+		if (isFree) [[unlikely]] factor = 0.f; // For exhaustivity. Never happens in our current scenarii. Handed over to TD learning.
+#endif
+	}
+#endif
+
 
 	// For benchmarking purposes, the original predictive coding algorithm can be used. See config.h 
 	void predictiveCodingWxGradientStep();

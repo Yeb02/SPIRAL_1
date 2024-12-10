@@ -86,12 +86,12 @@ int main()
 
 
 
-	Node::xlr = .5f; 
+	Node::xlr = .7f; 
 	Node::wxPriorStrength = 1.f;
 	Node::observationImportance = 1.f;
 	Node::certaintyDecay = .01f;
-	Node::xReg  = 0.1f;   
-	Node::wxReg = 0.1f;  // Hinders performance ?? REGL1 necessary to find the "correct" biases.
+	Node::xReg  = 0.0f;   
+	Node::wxReg = 0.0f;  // Hinders performance ?? REGL1 necessary to find the "correct" biases.
 
 	int nTrainSteps = 5; // Suprisingly, less steps leads to much better results.
 	int nTestSteps = 5;
@@ -215,7 +215,7 @@ int main()
 		}
 	}
 	else if (onlineRandom){
-		for (int i = 0; i < 1500; i++)
+		for (int i = 0; i < 1000; i++)
 		{
 			nn.learn(trainShuffledPoints[i], trainShuffledLabels[i], nTrainSteps);
 			if (i % 100 == 99) {

@@ -189,7 +189,7 @@ void Node::analyticalXUpdate()
 	
 	x += (xstar - x) * xlr;
 
-	float deltaFX = F(x) - fx;
+	float deltaFX = F(x) - fx; // redundant
 	fx += deltaFX;
 
 #ifdef ASYNCHRONOUS_UPDATES
@@ -243,7 +243,8 @@ void Node::setAnalyticalWX()
 	epsilon = (x - s2) / (1.f + s1);
 	mu = x - epsilon;
 
-	float sw2 = .0f;
+
+	//sw2 = 0.f;
 
 	bx_variate = epsilon/ bx_precision + bx_mean;
 	for (int i = 0; i < parents.size(); i++)
@@ -258,9 +259,7 @@ void Node::setAnalyticalWX()
 #else
 		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id])/(tau_i + wxReg * REGWX);
 #endif
-
-
-		sw2 += powf(parents[i]->wx_variates[id], 2.0f);
+		//sw2 += powf(parents[i]->wx_variates[id], 2.0f);
 	}
 
 	//sw2 = 1.f * powf(sw2, -.5f);
@@ -277,13 +276,25 @@ void Node::setAnalyticalWX()
 
 void Node::calcifyWB()
 {
+
+
 	for (int k = 0; k < children.size(); k++)
 	{
+#ifdef ADVANCED_W_IMPORTANCE
+		float ff = powf(fx * children[k]->factor, 2.0f);
+		wx_precisions[k] += ff * (-wx_precisions[k] * certaintyDecay + observationImportance);
+#else
 		wx_precisions[k] += fx * fx * (-wx_precisions[k] * certaintyDecay + observationImportance); // TODO * children[k]->group->tau ? probably not
+#endif
 		wx_means[k] = wx_variates[k];
 	}
 
-	bx_precision += (- bx_precision * certaintyDecay + observationImportance); // TODO * group->tau ? probably not
+#ifdef ADVANCED_W_IMPORTANCE
+	float ff = powf(factor, 2.0f);
+	bx_precision += ff * (-bx_precision * certaintyDecay + observationImportance);
+#else
+	bx_precision += (-bx_precision * certaintyDecay + observationImportance); // TODO * group->tau ? probably not
+#endif
 	bx_mean = bx_variate;
 }
 

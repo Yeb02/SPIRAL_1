@@ -183,6 +183,13 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		nodes[i]->setAnalyticalWX();
 	}
 	
+#ifdef ADVANCED_W_IMPORTANCE
+	for (int i = 0; i < nodes.size(); i++)
+	{
+		nodes[i]->computeFactor();
+	}
+#endif
+
 	for (int i = 0; i < nodes.size(); i++)
 	{
 		nodes[i]->calcifyWB();

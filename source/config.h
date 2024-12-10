@@ -50,7 +50,7 @@
 // Influence on results ? Seems like none ... Somewhat surprising, insight may be gained from understanding why.
 // Immediatly sets x to mu whenever mu changes for all nodes that are not clamped and have no children. Typically
 // the label at test time (or the action in future versions that will implement TD learning for RL ?).
-//#define FREE_NODES
+//#define FREE_NODES    TODO NOT FINISHED, FIND FREE GROUPS IN THE GRAPH
 
 
 // one and only one must be active:
@@ -64,6 +64,10 @@
 // Optional. Negligible computational overhead.
 #define HOMOEPS 
 
+
+// A theoretically more accurate importance term is added to the precision at calcification.
+// Optional. Negligible computational overhead.
+#define ADVANCED_W_IMPORTANCE
 
 
 // The wlr parameter is in the node::predictiveCodingWxGradientStep() function's definition.
@@ -94,8 +98,9 @@
 
 #undef FREE_NODES
 
-#undef HOMOEPS_STATIC
-#undef HOMOEPS_DYNAMIC
+#undef HOMOEPS
+
+#undef ADVANCED_W_IMPORTANCE
 
 #endif
 
