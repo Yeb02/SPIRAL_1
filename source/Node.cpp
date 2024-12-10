@@ -19,6 +19,11 @@ constexpr float a = -1.f;
 constexpr float b = 1.f;
 
 
+constexpr float gamma = .2f; // .5 * gamma actually 
+constexpr float alpha = 2.f; // 2  * alpha actually
+
+
+
 Node::Node(Group* _group) :
 	group(_group)
 {
@@ -45,7 +50,9 @@ Node::Node(Group* _group) :
 #ifdef FREE_NODES
 	isFree = false;
 #endif
-
+#ifdef ADVANCED_W_IMPORTANCE
+	factor = .0f;
+#endif
 	epsilon = x - mu;
 }
 
@@ -184,6 +191,32 @@ void Node::analyticalXUpdate()
 	float xstar = (group->tau * mu + stvw) / (stw2 + group->tau * (1.0f + localXReg)); // TODO  xReg is better factored in the tau* (at least makes more sense) 
 	//float xstar = (group->tau * mu + stvw) / (stw2 + group->tau + localXReg); // Test !!!!!!!!!!!!!!!
 #endif
+
+#ifdef LEAST_ACTION
+	float R = .0f;
+	for (int i = 0; i < children.size(); i++)
+	{
+		R += powf(children[i]->epsilon * wx_precisions[i], 2.0f);
+		//R += powf(children[i]->epsilon, 2.0f);
+		//R += powf(children[i]->epsilon / wx_precisions[i], 2.0f);
+	}
+	R *= gamma;
+
+	float E = .0f;
+	for (int j = 0; j < parents.size(); j++)
+	{
+		E += powf(parents[j]->fx * parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);
+		//E += powf(parents[j]->fx, 2.0f);
+		//E += powf(parents[j]->fx / parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);
+	}
+	E *= gamma;
+
+
+	xstar = ((group->tau + E) * mu + stvw) / (stw2 + E + group->tau * (1.0f + localXReg + R));
+#endif
+
+
+
 	xstar = F(xstar);
 
 	

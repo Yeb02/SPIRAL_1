@@ -90,8 +90,8 @@ int main()
 	Node::wxPriorStrength = 1.f;
 	Node::observationImportance = 1.f;
 	Node::certaintyDecay = .01f;
-	Node::xReg  = 0.0f;   
-	Node::wxReg = 0.0f;  // Hinders performance ?? REGL1 necessary to find the "correct" biases.
+	Node::xReg  = .0f;   
+	Node::wxReg = .0f;  // Hinders performance ?? REGL1 necessary to find the "correct" biases.
 
 	int nTrainSteps = 5; // Suprisingly, less steps leads to much better results.
 	int nTestSteps = 5;
@@ -110,9 +110,9 @@ int main()
 
 	switch (topo) {
 		case 0: {
-			nn.addGroup(50); //group 2
-			nn.addGroup(25); //group 3
-			nn.addGroup(10); //group 4
+			nn.addGroup(30); //group 2
+			nn.addGroup(15); //group 3
+			nn.addGroup(8); //group 4
 			nn.addConnexion(4, 3);
 			nn.addConnexion(3, 2);
 			nn.addConnexion(2, 1);

@@ -47,17 +47,16 @@
 //#define REGWL1
 
 
-// Influence on results ? Seems like none ... Somewhat surprising, insight may be gained from understanding why.
-// Immediatly sets x to mu whenever mu changes for all nodes that are not clamped and have no children. Typically
-// the label at test time (or the action in future versions that will implement TD learning for RL ?).
-//#define FREE_NODES    TODO NOT FINISHED, FIND FREE GROUPS IN THE GRAPH
-
-
 // one and only one must be active:
 //#define REGWX 1.0f
 #define REGWX (fi * fi) // best results, and most sensical
 //#define REGWX (epsilon * epsilon * fi * fi)
 
+
+// Influence on results ? Seems like none ... Somewhat surprising, insight may be gained from understanding why.
+// Immediatly sets x to mu whenever mu changes for all nodes that are not clamped and have no children. Typically
+// the label at test time (or the action in future versions that will implement TD learning for RL ?).
+//#define FREE_NODES    TODO NOT FINISHED, FIND FREE GROUPS IN THE GRAPH
 
 
 // An attempt at mitigating H2, aka the free energy gained by lowering epsilons and increasing weights.
@@ -67,7 +66,15 @@
 
 // A theoretically more accurate importance term is added to the precision at calcification.
 // Optional. Negligible computational overhead.
-#define ADVANCED_W_IMPORTANCE
+#define ADVANCED_W_IMPORTANCE 
+
+
+// Incompatible with ADVANCED_W_IMPORTANCE because the projected x update is complex and I am lazy. Could still work
+// and should be tried TODO . Requires ANALYTICAL_X, again because I am too lazy to implement the gradient.
+// Optional. Significant computational overhead.
+#if !defined(ADVANCED_W_IMPORTANCE) && defined(ANALYTICAL_X)
+//#define LEAST_ACTION
+#endif
 
 
 // The wlr parameter is in the node::predictiveCodingWxGradientStep() function's definition.
@@ -87,7 +94,6 @@
 #undef REGXL1
 #undef REGWL1
 #undef REGWX
-#define REGWX 1.0f
 
 #undef ANALYTICAL_X
 #undef QSIGMOIDE
@@ -101,6 +107,8 @@
 #undef HOMOEPS
 
 #undef ADVANCED_W_IMPORTANCE
+
+#undef LEAST_ACTION
 
 #endif
 
