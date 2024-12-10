@@ -38,15 +38,6 @@
 
 
 
-// For use in the analytical update only (TODO).  Not exactly an L1 regularization, because there is no analytical 
-// closed form. The L2 regularisation is still used in parallel. Change the parameter in Node::analyticalXUpdate .
-//#define REGXL1
-
-// Not exactly an L1 reg, because there is no analytical closed form. The L2 regularisation is still used in parallel.
-// Tweak the parameters in Node::setAnalyticalWX .
-//#define REGWL1
-
-
 // one and only one must be active:
 //#define REGWX 1.0f
 #define REGWX (fi * fi) // best results, and most sensical
@@ -77,9 +68,15 @@
 #endif
 
 
+// if defined, the regularisation of X is handled by the analytical W update only. (i.e. mu is regularized)
+// Does slightly, but decisevily better than without reg, and a bit better than regularizing X directly ?
+// Typical xReg: .2f  . Disables the direct regularization of the Xs.
+//#define XREG_IN_W
+
+
+
 // The wlr parameter is in the node::predictiveCodingWxGradientStep() function's definition.
 // Make sure that the right topology is picked in main. (I.e. label on top, datapoint at the bottom, topo = 3)
-
 //#define VANILLA_PREDICTIVE_CODING
 
 #ifdef VANILLA_PREDICTIVE_CODING // Do not modify what is in this #if. 

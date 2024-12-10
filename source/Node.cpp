@@ -185,12 +185,15 @@ void Node::analyticalXUpdate()
 		stvw += tiwi * vi;
 	}
 
-#ifdef REGXL1
-	float xstar = (group->tau * mu + stvw) / (stw2 + group->tau + localXReg * (1.0f + 1.f / abs(x + .001f)));
+	
+#ifdef XREG_IN_W
+	float xstar = (group->tau * mu + stvw) / (stw2 + group->tau);
 #else
-	float xstar = (group->tau * mu + stvw) / (stw2 + group->tau * (1.0f + localXReg)); // TODO  xReg is better factored in the tau* (at least makes more sense) 
-	//float xstar = (group->tau * mu + stvw) / (stw2 + group->tau + localXReg); // Test !!!!!!!!!!!!!!!
+	// xReg is better factored in the tau * (at least makes more sense) 
+	float xstar = (group->tau * mu + stvw) / (stw2 + group->tau * (1.0f + localXReg));
 #endif
+
+
 
 #ifdef LEAST_ACTION
 	float R = .0f;
@@ -247,11 +250,6 @@ void Node::analyticalXUpdate()
 
 void Node::setAnalyticalWX()
 {
-#ifdef REGWL1
-	const float relativeL1Strength = .3f;
-	const float minW = .001f;
-#endif
-
 	float s1 = 1.0f / bx_precision;
 	float s2 = bx_mean;
 
@@ -260,11 +258,8 @@ void Node::setAnalyticalWX()
 	{
 		int id = inParentsListIDs[i];
 		float fi = parents[i]->fx;
-#ifdef REGWL1
-		float t1 = fi / (parents[i]->wx_precisions[id] + wxReg * REGWX * (1.f + relativeL1Strength / (abs(parents[i]->wx_means[id]) + minW)) );
-#else
+
 		float t1 = fi / (parents[i]->wx_precisions[id] + wxReg * REGWX);
-#endif
 
 		s1 += fi * t1;
 		s2 += t1 * parents[i]->wx_means[id] * parents[i]->wx_precisions[id];
@@ -273,12 +268,15 @@ void Node::setAnalyticalWX()
 	// TODO should probably be commented out with the current use of tau
 	//s1 *= group->tau;
 
+#ifdef XREG_IN_W
+	epsilon = ((localXReg * s1 + 1.f) * x - s2) / (1.f + (1.f + localXReg) * s1);
+#else
 	epsilon = (x - s2) / (1.f + s1);
+#endif
 	mu = x - epsilon;
 
 
-	//sw2 = 0.f;
-
+	//float sw2 = 0.f;
 	bx_variate = epsilon/ bx_precision + bx_mean;
 	for (int i = 0; i < parents.size(); i++)
 	{
@@ -286,12 +284,14 @@ void Node::setAnalyticalWX()
 		float fi = parents[i]->fx;
 		float tau_i = parents[i]->wx_precisions[id];
 
-#ifdef REGWL1
-		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id])/(tau_i + 
-			wxReg * REGWX * (1.f + relativeL1Strength / (abs(parents[i]->wx_means[id]) + minW)) );
-#else
-		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id])/(tau_i + wxReg * REGWX);
+#ifdef XREG_IN_W
+		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id] - localXReg * mu * fi) 
+			/ (tau_i + wxReg * REGWX);
+#else 
+		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id]) / (tau_i + wxReg * REGWX);
 #endif
+		
+
 		//sw2 += powf(parents[i]->wx_variates[id], 2.0f);
 	}
 

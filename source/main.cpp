@@ -90,8 +90,8 @@ int main()
 	Node::wxPriorStrength = 1.f;
 	Node::observationImportance = 1.f;
 	Node::certaintyDecay = .01f;
-	Node::xReg  = .0f;   
-	Node::wxReg = .0f;  // Hinders performance ?? REGL1 necessary to find the "correct" biases.
+	Node::xReg  = .2f;   
+	Node::wxReg = .1f;  // Hinders performance ?? REGL1 necessary to find the "correct" biases.
 
 	int nTrainSteps = 5; // Suprisingly, less steps leads to much better results.
 	int nTestSteps = 5;
