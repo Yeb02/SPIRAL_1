@@ -19,8 +19,7 @@ constexpr float a = -1.f;
 constexpr float b = 1.f;
 
 
-constexpr float gamma = .2f; // .5 * gamma actually 
-constexpr float alpha = 2.f; // 2  * alpha actually
+constexpr float gamma = .3f; // .5 * gamma actually 
 
 
 
@@ -199,23 +198,25 @@ void Node::analyticalXUpdate()
 	float R = .0f;
 	for (int i = 0; i < children.size(); i++)
 	{
-		R += powf(children[i]->epsilon * wx_precisions[i], 2.0f);
+		//R += powf(children[i]->epsilon * wx_precisions[i], 2.0f);
 		//R += powf(children[i]->epsilon, 2.0f);
-		//R += powf(children[i]->epsilon / wx_precisions[i], 2.0f);
+		R += powf(children[i]->epsilon / wx_precisions[i], 2.0f);
 	}
 	R *= gamma;
 
 	float E = .0f;
 	for (int j = 0; j < parents.size(); j++)
 	{
-		E += powf(parents[j]->fx * parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);
+		//E += powf(parents[j]->fx * parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);
 		//E += powf(parents[j]->fx, 2.0f);
-		//E += powf(parents[j]->fx / parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);
+		E += powf(parents[j]->fx / parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);
 	}
 	E *= gamma;
 
 
-	xstar = ((group->tau + E) * mu + stvw) / (stw2 + E + group->tau * (1.0f + localXReg + R));
+	xstar = ((group->tau + E) * mu + stvw) / (stw2 + E + group->tau * (1.0f + localXReg) + R);
+	//xstar = ((group->tau + E) * mu + stvw) / (stw2 + E + group->tau * (1.0f + localXReg + R));
+	//xstar = (group->tau * (1.f + E) * mu + stvw) / (stw2 + group->tau * (E + 1.0f + localXReg + R));
 #endif
 
 
@@ -265,6 +266,8 @@ void Node::setAnalyticalWX()
 		s2 += t1 * parents[i]->wx_means[id] * parents[i]->wx_precisions[id];
 	}
 
+	s1 *= observationImportance;
+
 	// TODO should probably be commented out with the current use of tau
 	//s1 *= group->tau;
 
@@ -285,10 +288,10 @@ void Node::setAnalyticalWX()
 		float tau_i = parents[i]->wx_precisions[id];
 
 #ifdef XREG_IN_W
-		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id] - localXReg * mu * fi) 
+		parents[i]->wx_variates[id] = (observationImportance * epsilon * fi + tau_i * parents[i]->wx_means[id] - localXReg * mu * fi)
 			/ (tau_i + wxReg * REGWX);
 #else 
-		parents[i]->wx_variates[id] = (epsilon * fi + tau_i * parents[i]->wx_means[id]) / (tau_i + wxReg * REGWX);
+		parents[i]->wx_variates[id] = (observationImportance * epsilon * fi + tau_i * parents[i]->wx_means[id]) / (tau_i + wxReg * REGWX);
 #endif
 		
 

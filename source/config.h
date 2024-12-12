@@ -63,13 +63,14 @@
 // Incompatible with ADVANCED_W_IMPORTANCE because the projected x update is complex and I am lazy. Could still work
 // and should be tried TODO . Requires ANALYTICAL_X, again because I am too lazy to implement the gradient.
 // Optional. Significant computational overhead.
-#if !defined(ADVANCED_W_IMPORTANCE) && defined(ANALYTICAL_X)
+#if defined(ANALYTICAL_X)
+//////#if !defined(ADVANCED_W_IMPORTANCE) && defined(ANALYTICAL_X)
 //#define LEAST_ACTION
 #endif
 
 
 // if defined, the regularisation of X is handled by the analytical W update only. (i.e. mu is regularized)
-// Does slightly, but decisevily better than without reg, and a bit better than regularizing X directly ?
+// Does slightly, but decisevily better than without reg, but worse than regularizing X directly ?
 // Typical xReg: .2f  . Disables the direct regularization of the Xs.
 //#define XREG_IN_W
 
