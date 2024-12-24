@@ -266,21 +266,21 @@ void Node::setAnalyticalWX()
 		s2 += t1 * parents[i]->wx_means[id] * parents[i]->wx_precisions[id];
 	}
 
-	s1 *= observationImportance;
+	
 
 	// TODO should probably be commented out with the current use of tau
 	//s1 *= group->tau;
 
 #ifdef XREG_IN_W
-	epsilon = ((localXReg * s1 + 1.f) * x - s2) / (1.f + (1.f + localXReg) * s1);
+	epsilon = ((localXReg * s1 + 1.f) * x - s2) / (1.f + (observationImportance + localXReg) * s1);
 #else
-	epsilon = (x - s2) / (1.f + s1);
+	epsilon = (x - s2) / (1.f + s1 * observationImportance);
 #endif
 	mu = x - epsilon;
 
 
 	//float sw2 = 0.f;
-	bx_variate = epsilon/ bx_precision + bx_mean;
+	bx_variate = observationImportance * epsilon/ bx_precision + bx_mean;
 	for (int i = 0; i < parents.size(); i++)
 	{
 		int id = inParentsListIDs[i];
