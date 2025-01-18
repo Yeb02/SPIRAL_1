@@ -23,7 +23,7 @@
 #elif defined(QSIGMOIDE)
 #define F(x) (.5f*tanhf(x) + .5f)  // F' = .5(1-tanhf²) = .5 - 2 * (F-.5)². Sigmoide is .5f*tanhf(.5*x) + .5f
 #elif defined(ID)
-#define F(x) x 
+#define F(x) (x)
 #endif
 
 
@@ -33,7 +33,7 @@
 
 #ifdef ANALYTICAL_X
 #undef F
-#define F(x) std::clamp(x, a, b) // a, b are defined at the top of node.cpp. -1 and 1 typically.
+#define F(x) std::clamp((x), a, b) // a, b are defined at the top of node.cpp. -1 and 1 typically.
 #endif
 
 
@@ -44,6 +44,14 @@
 //#define REGWX (epsilon * epsilon * fi * fi)
 
 
+
+// Not compatible with anything. Tried to find an alternative, less chaotic descent algorithm that would not oscillate as much.
+// Results: with the "simple" implementations, fast and stable convergence to a local optimum. Better results with the "complex"
+// implementation, almost on par with the standard descent, but reintroduces oscillations... So pointless ?
+#if defined(ANALYTICAL_X) && !defined(ASYNCHRONOUS_UPDATES)
+//#define INDIRECT_DESCENT
+#endif
+
 // Influence on results ? Seems like none ... Somewhat surprising, insight may be gained from understanding why.
 // Immediatly sets x to mu whenever mu changes for all nodes that are not clamped and have no children. Typically
 // the label at test time (or the action in future versions that will implement TD learning for RL ?).
@@ -51,18 +59,19 @@
 
 
 // An attempt at mitigating H2, aka the free energy gained by lowering epsilons and increasing weights.
-// Optional. Negligible computational overhead.
-#define HOMOEPS 
+// Optional. Negligible computational overhead. (and gains ?)
+// hyperparameters in  Group::updateTau() and  Group::Group()
+//#define HOMOEPS 
 
 
 // A theoretically more accurate importance term is added to the precision at calcification.
-// Optional. Negligible computational overhead.
-#define ADVANCED_W_IMPORTANCE 
+// Optional. Negligible computational overhead (and gains ?). No hyperparameter.
+//#define ADVANCED_W_IMPORTANCE 
 
 
 // Incompatible with ADVANCED_W_IMPORTANCE because the projected x update is complex and I am lazy. Could still work
 // and should be tried TODO . Requires ANALYTICAL_X, again because I am too lazy to implement the gradient.
-// Optional. Significant computational overhead.
+// Optional. Significant computational overhead. Hyperparameters in  Node::analyticalXUpdate(), gamma explicit but alpha implicit (-1 or 1)
 #if defined(ANALYTICAL_X)
 //////#if !defined(ADVANCED_W_IMPORTANCE) && defined(ANALYTICAL_X)
 //#define LEAST_ACTION

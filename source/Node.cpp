@@ -19,8 +19,6 @@ constexpr float a = -1.f;
 constexpr float b = 1.f;
 
 
-constexpr float gamma = .3f; // .5 * gamma actually 
-
 
 
 Node::Node(Group* _group) :
@@ -35,9 +33,11 @@ Node::Node(Group* _group) :
 	wx_means.resize(0);
 
 
+
 	bx_mean = NORMAL_01 * .01f;
-	//bx_precision = .01f;
-	bx_precision = wxPriorStrength; 
+
+	bx_precision = .01f;
+	//bx_precision = wxPriorStrength; 
 	bx_variate = bx_mean;
 
 
@@ -71,13 +71,15 @@ void Node::addChildren(Node** newChildren, int nNewChildren, int specialCase)
 	wx_means.resize(children.size());
 	wx_precisions.resize(children.size());
 
+#ifdef INDIRECT_DESCENT
+	prescribedXs.resize(children.size());
+#endif
 
 	// TODO unfortunately initialization still has a strong influence on performance.
 	// Check that it is still the case in later versions of the algorithm.
 	//float amplitude = .01f; 
 	//float amplitude = .1f / sqrtf((float)(1 + (int)children.size()));
 	float amplitude = 1.f / sqrtf((float)(children.size() * children.back()->parents.size()));
-
 
 	for (int i = (int)children.size() - nNewChildren; i < children.size(); i++)
 	{
@@ -195,21 +197,25 @@ void Node::analyticalXUpdate()
 
 
 #ifdef LEAST_ACTION
+	//constexpr float gamma = .0f; // .5 * gamma actually 
+	//constexpr float gamma = .3f; // .5 * gamma actually 
+	constexpr float gamma = .2f; // .5 * gamma actually 
+
 	float R = .0f;
 	for (int i = 0; i < children.size(); i++)
 	{
-		//R += powf(children[i]->epsilon * wx_precisions[i], 2.0f);
-		//R += powf(children[i]->epsilon, 2.0f);
-		R += powf(children[i]->epsilon / wx_precisions[i], 2.0f);
+		//R += powf(children[i]->epsilon * wx_precisions[i], 2.0f); // alpha = 1
+		//R += powf(children[i]->epsilon, 2.0f);				// alpha = 0
+		R += powf(children[i]->epsilon, 2.0f) / wx_precisions[i]; // alpha = -1
 	}
 	R *= gamma;
 
 	float E = .0f;
 	for (int j = 0; j < parents.size(); j++)
 	{
-		//E += powf(parents[j]->fx * parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);
-		//E += powf(parents[j]->fx, 2.0f);
-		E += powf(parents[j]->fx / parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);
+		//E += powf(parents[j]->fx * parents[j]->wx_precisions[inParentsListIDs[j]], 2.0f);  // alpha = 1
+		//E += powf(parents[j]->fx, 2.0f);												// alpha = 0
+		E += powf(parents[j]->fx, 2.0f) / parents[j]->wx_precisions[inParentsListIDs[j]]; // alpha = -1
 	}
 	E *= gamma;
 
@@ -279,7 +285,6 @@ void Node::setAnalyticalWX()
 	mu = x - epsilon;
 
 
-	//float sw2 = 0.f;
 	bx_variate = observationImportance * epsilon/ bx_precision + bx_mean;
 	for (int i = 0; i < parents.size(); i++)
 	{
@@ -294,19 +299,7 @@ void Node::setAnalyticalWX()
 		parents[i]->wx_variates[id] = (observationImportance * epsilon * fi + tau_i * parents[i]->wx_means[id]) / (tau_i + wxReg * REGWX);
 #endif
 		
-
-		//sw2 += powf(parents[i]->wx_variates[id], 2.0f);
 	}
-
-	//sw2 = 1.f * powf(sw2, -.5f);
-	//mu = bx_variate;
-	//for (int i = 0; i < parents.size(); i++)
-	//{
-	//	int id = inParentsListIDs[i];
-	//	parents[i]->wx_variates[id] *= sw2;
-	//	mu += parents[i]->wx_variates[id] * parents[i]->fx;
-	//}
-	//epsilon = x - mu;
 }
 
 
@@ -318,18 +311,21 @@ void Node::calcifyWB()
 	{
 #ifdef ADVANCED_W_IMPORTANCE
 		float ff = powf(fx * children[k]->factor, 2.0f);
-		wx_precisions[k] += ff * (-wx_precisions[k] * certaintyDecay + observationImportance);
+		wx_precisions[k] += -wx_precisions[k] * certaintyDecay + ff * observationImportance;
+		//wx_precisions[k] += ff * (-wx_precisions[k] * certaintyDecay + observationImportance);
 #else
-		wx_precisions[k] += fx * fx * (-wx_precisions[k] * certaintyDecay + observationImportance); // TODO * children[k]->group->tau ? probably not
+		//wx_precisions[k] +=  -wx_precisions[k] * certaintyDecay + fx * fx * observationImportance; // requires a smaller decay, 1e-4
+		wx_precisions[k] += fx * fx * (-wx_precisions[k] * certaintyDecay + observationImportance); // requires a larger decay, 1e-3
 #endif
 		wx_means[k] = wx_variates[k];
 	}
 
 #ifdef ADVANCED_W_IMPORTANCE
 	float ff = powf(factor, 2.0f);
-	bx_precision += ff * (-bx_precision * certaintyDecay + observationImportance);
+	bx_precision += -bx_precision * certaintyDecay + ff * observationImportance;
+	//bx_precision += ff * (-bx_precision * certaintyDecay + observationImportance);
 #else
-	bx_precision += (-bx_precision * certaintyDecay + observationImportance); // TODO * group->tau ? probably not
+	bx_precision += -bx_precision * certaintyDecay + observationImportance; 
 #endif
 	bx_mean = bx_variate;
 }
@@ -374,3 +370,96 @@ void Node::transmitPredictions()
 		children[k]->mu += fx * wx_variates[k];
 	}
 }
+
+
+
+#ifdef INDIRECT_DESCENT
+
+constexpr float lambdaX = .0f;  // LOCAL x reg TODO !
+constexpr float lambdaXprime = .0f;
+
+void Node::computeOptimalXs()
+{
+	if (parents.size() == 0) return;
+
+	float _a = .0f;
+	float _b = .0f;
+
+	for (int i = 0; i < parents.size(); i++)
+	{
+		int id = inParentsListIDs[i];
+		float wi = parents[i]->wx_variates[id];
+
+		float par_tau = parents[i]->loco_tau - wi * wi;
+
+		float wotl = wi / (lambdaXprime + par_tau);
+
+		float par_mu = (parents[i]->loco_mu - (epsilon + wi * parents[i]->fx)) / par_tau;
+
+		_a += wi*wotl;
+		_b += par_mu*wotl;
+	}
+
+
+	
+	float temp_epsilon = ((lambdaX * _a + 1.f) * x - _b) / ((1.f + lambdaX) * _a + 1.f);
+	float temp_mu = x - temp_epsilon;
+
+	for (int i = 0; i < parents.size(); i++)
+	{
+		int id = inParentsListIDs[i];
+		float wi = parents[i]->wx_variates[id];
+		float mui = parents[i]->mu;
+
+		float par_tau = parents[i]->loco_tau - wi * wi;
+		float par_mu = (parents[i]->loco_mu - (epsilon + wi * parents[i]->fx)) / par_tau;
+
+		parents[i]->prescribedXs[id] = (temp_epsilon * wi + par_tau * par_mu - lambdaX * temp_mu * wi) / (par_tau + lambdaXprime);
+	}
+}
+
+
+void Node::setXToBarycentre()
+{
+	if (children.size() == 0) {
+		analyticalXUpdate();
+		return;
+	}
+
+
+	float _baryX = .0f;
+	float _div = 0.f;
+	for (int i = 0; i < children.size(); i++)
+	{
+		//float _f = abs(wx_variates[i]);
+		float _f = powf(wx_variates[i], 2.f);
+		_baryX += prescribedXs[i] * _f;
+		_div += _f;
+	}
+	x = F(_baryX / _div);
+	fx = x;
+}
+
+void Node::computeLocos()
+{
+	if (children.size() == 0) {
+		
+		loco_tau = 1.f + lambdaXprime;
+		loco_mu = mu;
+
+		return;
+	}
+
+	float svw = .0f, sw2 = .0f;
+	for (int i = 0; i < children.size(); i++)
+	{
+		float wi = wx_variates[i];  
+		sw2 += wi * wi;
+		float vi = children[i]->epsilon + wi * fx;
+		svw += wi * vi;
+	}
+	
+	loco_tau = 1.f + lambdaXprime + sw2;
+	loco_mu = mu + svw; // actually =loco_mu*loco_tau, because the term induced by the i-th child needs be easily removed by this child in its computeOptimalXs
+}
+#endif

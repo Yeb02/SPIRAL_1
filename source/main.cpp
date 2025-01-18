@@ -90,8 +90,8 @@ int main()
 	Node::wxPriorStrength = 1.f;
 	Node::observationImportance = 1.f;
 	Node::certaintyDecay = .001f;
-	Node::xReg  = .2f;  //.2f
-	Node::wxReg = .1f;  //.1f
+	Node::xReg  = .2f;  
+	Node::wxReg = .0f;  
 
 	int nTrainSteps = 5; // Suprisingly, less steps leads to much better results.
 	int nTestSteps = 5;
@@ -217,6 +217,8 @@ int main()
 	else if (onlineRandom){
 		for (int i = 0; i < 1000; i++)
 		{
+			//Node::xlr = std::min(.7f, .1f + .6f * (float)i / 50);
+			//nTrainSteps = std::max(5, 15 - i / 3);
 			nn.learn(trainShuffledPoints[i], trainShuffledLabels[i], nTrainSteps);
 			if (i % 100 == 99) {
 				LOGL("Step " + std::to_string(i));

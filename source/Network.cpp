@@ -123,10 +123,10 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 
 	int nClamped = datapointSize + labelSize;
 
-	//float previousEnergy = computeTotalActivationEnergy();
+	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++) 
 	{
-		//LOG(previousEnergy);
+		LOG(previousEnergy);
 
 #ifdef ASYNCHRONOUS_UPDATES
 		std::shuffle(permutation.begin(), permutation.end(), generator);
@@ -140,14 +140,40 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		}
 #else //ASYNCHRONOUS_UPDATES
 
+#ifdef INDIRECT_DESCENT
+		std::vector<float> prescribedXs; // The optimal solution each child nodes wants.
+
+		void computeOptimalXs();
+#endif
+
+#ifdef ANALYTICAL_X
+#ifdef INDIRECT_DESCENT
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->computeLocos();
+		}
+		// 0 !
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->computeOptimalXs();
+		}
 		for (int i = nClamped; i < nodes.size(); i++)
 		{
-#ifdef ANALYTICAL_X
-			nodes[i]->analyticalXUpdate();
-#else
-			nodes[i]->XGradientStep();
-#endif 
+			nodes[i]->setXToBarycentre();
 		}
+#else
+		for (int i = nClamped; i < nodes.size(); i++)
+		{
+			nodes[i]->analyticalXUpdate();
+		}
+#endif
+#else
+		for (int i = nClamped; i < nodes.size(); i++)
+		{
+			nodes[i]->XGradientStep();
+		}
+#endif
+
 
 		for (int i = 0; i < nodes.size(); i++)
 		{
@@ -161,13 +187,14 @@ void Network::learn(float* _datapoint, float* _label, int nSteps)
 		{
 			nodes[i]->epsilon = nodes[i]->x - nodes[i]->mu;
 		}
+		
+
 #endif // ASYNCHRONOUS_UPDATES
 
 
-		//float currentEnergy = computeTotalActivationEnergy();
-		//previousEnergy = currentEnergy;
+		previousEnergy = computeTotalActivationEnergy();
 	}
-	//LOG(previousEnergy << "\n\n");
+	LOG(previousEnergy << "\n\n");
 
 
 
@@ -235,10 +262,10 @@ void Network::evaluate(float* _datapoint, int nSteps)
 	int nClamped = datapointSize;
 	
 
-	//float previousEnergy = computeTotalActivationEnergy();
+	float previousEnergy = computeTotalActivationEnergy();
 	for (int s = 0; s < nSteps; s++)
 	{
-		//LOG(previousEnergy);
+		LOG(previousEnergy);
 
 #ifdef ASYNCHRONOUS_UPDATES
 		std::shuffle(permutation.begin(), permutation.end(), generator);
@@ -253,14 +280,34 @@ void Network::evaluate(float* _datapoint, int nSteps)
 
 #else // ASYNCHRONOUS_UPDATES
 
+
+#ifdef ANALYTICAL_X
+#ifdef INDIRECT_DESCENT
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->computeLocos();
+		}
+		// 0 !
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			nodes[i]->computeOptimalXs();
+		}
 		for (int i = nClamped; i < nodes.size(); i++)
 		{
-#ifdef ANALYTICAL_X
-			nodes[i]->analyticalXUpdate();
-#else
-			nodes[i]->XGradientStep();
-#endif 
+			nodes[i]->setXToBarycentre();
 		}
+#else
+		for (int i = nClamped; i < nodes.size(); i++)
+		{
+			nodes[i]->analyticalXUpdate();
+		}
+#endif
+#else
+		for (int i = nClamped; i < nodes.size(); i++)
+		{
+			nodes[i]->XGradientStep();
+		}
+#endif
 
 		for (int i = 0; i < nodes.size(); i++)
 		{
@@ -276,10 +323,9 @@ void Network::evaluate(float* _datapoint, int nSteps)
 		}
 #endif // ASYNCHRONOUS_UPDATES
 
-		//float currentEnergy = computeTotalActivationEnergy();
-		//previousEnergy = currentEnergy;
+		previousEnergy = computeTotalActivationEnergy();
 	}
-	//LOG(previousEnergy << "\n");
+	LOG(previousEnergy << "\n");
 
 	for (int i = 0; i < labelSize; i++)
 	{

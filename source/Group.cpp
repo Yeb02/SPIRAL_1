@@ -16,12 +16,15 @@ Group::Group(int _nNodes, int _id) :
 
 	tau = 1.0f;
 	logTau = .0f;
-	age = 10.f;
+	age = 5.f;
 };
 
 
 void Group::updateTau()
 {
+	constexpr float decay = 1.f - .05f;
+
+
 	avgEps2 = sumEps2 / nNodes;
 
 	if (childrenGroups.size() == 0) return;
@@ -36,7 +39,7 @@ void Group::updateTau()
 	avgChildrenEps2 /= nChildren;
 
 	logTau += logf(avgEps2 / avgChildrenEps2) / age;
-	age = age * .99f + 1.f;
+	age = age * decay + 1.f;
 
 	tau = expf(logTau);
 }

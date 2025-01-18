@@ -91,6 +91,17 @@ public:
 #endif
 
 
+
+#ifdef INDIRECT_DESCENT
+	std::vector<float> prescribedXs; // The optimal solution each child nodes wants.
+
+	float loco_mu, loco_tau;
+
+	void computeOptimalXs();
+	void setXToBarycentre();
+	void computeLocos();
+#endif
+
 	// For benchmarking purposes, the original predictive coding algorithm can be used. See config.h 
 	void predictiveCodingWxGradientStep();
 
